@@ -1,0 +1,224 @@
+package tv.cleanyour.core.planner
+
+import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.GroupDefault
+import tv.cleanyour.core.model.Op
+import tv.cleanyour.core.model.PackageEntry
+import tv.cleanyour.core.model.PackageGroup
+import tv.cleanyour.core.model.PackageName
+import tv.cleanyour.core.model.SettingKey
+import tv.cleanyour.core.model.Snapshot
+import tv.cleanyour.core.ops.Denylist
+import tv.cleanyour.core.spec.FactsTable
+
+/**
+ * REA (Reverse-Engineering Analysis) Engine:
+ * Autonomous heuristic analyzer for Android TV & Google TV.
+ * Detects hidden ad-providers, telemetry daemons, partner bloatware, and RAM hogs
+ * on ANY TV device (even unlisted/unknown TV models) without requiring hardcoded profiles.
+ */
+object ReaEngine {
+
+    val STOCK_GOOGLE_LAUNCHER = PackageName("com.google.android.tvlauncher")
+    val STOCK_TV_RECOMMENDATIONS = PackageName("com.google.android.tvrecommendations")
+
+    // Heuristic signatures for Ads & Recommendation daemons
+    private val ADS_SIGNATURES = listOf(
+        "recommendation",
+        "adssignals",
+        "promos",
+        "autoinstalls",
+        ".ads.",
+        ".ads",
+        "adservice",
+        "sponsor"
+    )
+
+    // Heuristic signatures for Telemetry & Analytics trackers
+    private val TELEMETRY_SIGNATURES = listOf(
+        "analytic",
+        "telemetry",
+        "tracking",
+        "feedback",
+        "stat",
+        "metrics",
+        "diagnosing",
+        "crashlog",
+        "logging"
+    )
+
+    // Known vendor partner bloatware and unnecessary background apps
+    private val VENDOR_BLOAT_PREFIXES = listOf(
+        "com.google.android.leanbacklauncher.partnercustomizer",
+        "com.smartdevice.leanbacklauncher.customizer",
+        "com.google.android.videos",
+        "com.google.android.partnersetup",
+        "com.xiaomi.mitv.upgrade",
+        "com.xiaomi.mitv.shop",
+        "com.xiaomi.mitv.media.vibes",
+        "com.xiaomi.tv.gallery",
+        "com.tcl.waterfall",
+        "com.tcl.partnercustomizer"
+    )
+
+    data class Candidate(
+        val pkg: PackageName,
+        val friendlyName: String,
+        val description: String,
+        val category: String,
+        val estimatedRamMb: Int = 35
+    )
+
+    /**
+     * Inspects all installed packages on the connected TV and discovers
+     * all bloatware candidates using static facts and dynamic heuristic reverse-engineering.
+     */
+    fun findDebloatCandidates(
+        snapshot: Snapshot,
+        factsTable: FactsTable,
+        stockLaunchers: List<Component>
+    ): List<Candidate> {
+        val candidates = mutableListOf<Candidate>()
+        val stockPkgs = stockLaunchers.map { it.pkg }.toSet()
+        val protectedPkgs = setOf(STOCK_GOOGLE_LAUNCHER) + stockPkgs
+
+        for (pkg in snapshot.packages.keys) {
+            val pkgStr = pkg.value.lowercase()
+
+            // 1. Absolute Safety Check: Never target protected packages, system UI, inputs, or active launchers
+            if (pkg in protectedPkgs) continue
+            if (Denylist.staticReason(pkg.value) != null) continue
+            if (snapshot.home.resolved?.pkg == pkg) continue
+            if (snapshot.ime?.pkg == pkg || snapshot.screensaver.any { it.pkg == pkg }) continue
+
+            // 2. Facts Table Match
+            val facts = factsTable.lookup(pkg)
+            if (facts != null) {
+                val cat = facts.category.lowercase()
+                if (cat in setOf("ads", "telemetry", "analytics", "bloat", "unwanted", "streaming")) {
+                    candidates += Candidate(
+                        pkg = pkg,
+                        friendlyName = facts.friendlyName,
+                        description = facts.description,
+                        category = facts.category,
+                        estimatedRamMb = estimateRam(pkg.value)
+                    )
+                    continue
+                }
+            }
+
+            // 3. Dynamic Heuristic Reverse Engineering (Handles unknown / unlisted TVs)
+            if (ADS_SIGNATURES.any { pkgStr.contains(it) }) {
+                candidates += Candidate(
+                    pkg = pkg,
+                    friendlyName = formatName(pkg.value),
+                    description = "Ad and recommendation provider eating TV RAM",
+                    category = "ads",
+                    estimatedRamMb = estimateRam(pkg.value)
+                )
+                continue
+            }
+
+            if (TELEMETRY_SIGNATURES.any { pkgStr.contains(it) }) {
+                candidates += Candidate(
+                    pkg = pkg,
+                    friendlyName = formatName(pkg.value),
+                    description = "Background telemetry and tracking service",
+                    category = "telemetry",
+                    estimatedRamMb = estimateRam(pkg.value)
+                )
+                continue
+            }
+
+            if (VENDOR_BLOAT_PREFIXES.any { pkgStr.startsWith(it) }) {
+                candidates += Candidate(
+                    pkg = pkg,
+                    friendlyName = formatName(pkg.value),
+                    description = "Preloaded manufacturer bloatware",
+                    category = "bloat",
+                    estimatedRamMb = estimateRam(pkg.value)
+                )
+                continue
+            }
+        }
+
+        return candidates.distinctBy { it.pkg }.sortedBy { it.pkg.value }
+    }
+
+    /**
+     * Synthesizes PackageGroups from REA candidates so the Planner and UI
+     * can display and switch off all bloatware on ANY unlisted TV.
+     */
+    fun synthesizeReaGroups(candidates: List<Candidate>): List<PackageGroup> {
+        val ads = candidates.filter { it.category == "ads" }
+        val telemetry = candidates.filter { it.category == "telemetry" }
+        val bloat = candidates.filter { it.category !in setOf("ads", "telemetry") }
+
+        val groups = mutableListOf<PackageGroup>()
+        if (ads.isNotEmpty()) {
+            groups += PackageGroup(
+                id = "rea_ads",
+                title = "Adverts and Recommendations (REA Auto-Found)",
+                default = GroupDefault.DISABLE,
+                packages = ads.map { PackageEntry(it.pkg, it.description) }
+            )
+        }
+        if (telemetry.isNotEmpty()) {
+            groups += PackageGroup(
+                id = "rea_telemetry",
+                title = "Tracking and Telemetry (REA Auto-Found)",
+                default = GroupDefault.DISABLE,
+                packages = telemetry.map { PackageEntry(it.pkg, it.description) }
+            )
+        }
+        if (bloat.isNotEmpty()) {
+            groups += PackageGroup(
+                id = "rea_bloat",
+                title = "Background Bloatware (REA Auto-Found)",
+                default = GroupDefault.DISABLE,
+                packages = bloat.map { PackageEntry(it.pkg, it.description) }
+            )
+        }
+        return groups
+    }
+
+    /**
+     * Checks if Option A: Clean Stock Launcher is applicable.
+     */
+    fun isStockGoogleTvLauncher(snapshot: Snapshot): Boolean {
+        return snapshot.packages.containsKey(STOCK_GOOGLE_LAUNCHER)
+    }
+
+    /**
+     * Builds the exact operations for Option A: Clean Stock Home.
+     * Safely disables tvrecommendations, puts ad-block settings, and restarts stock launcher.
+     */
+    fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
+        val ops = mutableListOf<Op>()
+
+        if (snapshot.packages.containsKey(STOCK_TV_RECOMMENDATIONS)) {
+            ops += Op.Disable(STOCK_TV_RECOMMENDATIONS)
+        }
+
+        ops += Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0")
+        ops += Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1")
+
+        if (isStockGoogleTvLauncher(snapshot)) {
+            ops += Op.RestartHome(Component(STOCK_GOOGLE_LAUNCHER, ".MainActivity"))
+        }
+
+        return ops
+    }
+
+    private fun estimateRam(pkg: String): Int = when {
+        pkg.contains("recommendation") -> 55
+        pkg.contains("analytic") -> 40
+        pkg.contains("partner") -> 35
+        else -> 30
+    }
+
+    private fun formatName(pkg: String): String {
+        val last = pkg.substringAfterLast('.')
+        return last.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
+}

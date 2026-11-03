@@ -16,7 +16,9 @@ data class Choices(val kept: Set<PackageName>, val extraOff: Set<PackageName>, v
     val installLauncher: Boolean, val takeover: Boolean, val replaceLauncherSigner: Boolean, val keepDebuggingOn: Boolean,
     val curtain: Boolean = true,   // RFC-CURTAIN-1: show the progress on the TV
     val wizardWifi: WizardWifi = WizardWifi.UNKNOWN,   // RFC-LAUNCHER-1 (D3): may the takeover switch the setup wizard off
-    val homeHelper: Boolean = false)   // RFC-HELPER-1 (test build): the Home button helper instead of the home screen switch
+    val homeHelper: Boolean = false,   // RFC-HELPER-1 (test build): the Home button helper instead of the home screen switch
+    val cleanStockHome: Boolean = false,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
+    val autoDebloat: Boolean = false)   // REA Autonomous Deep RAM Debloat
 // RFC-LAUNCHER-1 (D3): whether the setup wizard saved the TV's Wi-Fi network (dumpsys wifi, SavedWifiOwners). Switching the
 // wizard off deletes a network it saved, so the takeover switches it off only when the TV says NOT_OWNER: others saved its
 // networks, or none is saved (a cable). UNKNOWN: the TV could not tell (RF-LAUNCHER-240 F6, F14).

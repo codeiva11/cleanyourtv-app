@@ -1,0 +1,91 @@
+name: Release Signed APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Sign Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Setup Release Signing Keystore
+        id: setup_signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.CYT_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.CYT_RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.CYT_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.CYT_RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using repository secret keystore..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+            echo "CYT_RELEASE_KEYSTORE=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
+            echo "CYT_RELEASE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+            echo "CYT_RELEASE_KEY_ALIAS=${KEY_ALIAS:-cleanyourtv}" >> $GITHUB_ENV
+            echo "CYT_RELEASE_KEY_PASSWORD=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" >> $GITHUB_ENV
+          else
+            echo "Generating self-contained release signing keystore..."
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/release.jks" -alias cleanyourtv \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "cleanyourtvpass" -keypass "cleanyourtvpass" \
+              -dname "CN=CleanYourTV, OU=Mobile, O=CleanYourTV, L=Global, S=Global, C=US"
+            echo "CYT_RELEASE_KEYSTORE=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
+            echo "CYT_RELEASE_KEYSTORE_PASSWORD=cleanyourtvpass" >> $GITHUB_ENV
+            echo "CYT_RELEASE_KEY_ALIAS=cleanyourtv" >> $GITHUB_ENV
+            echo "CYT_RELEASE_KEY_PASSWORD=cleanyourtvpass" >> $GITHUB_ENV
+          fi
+
+      - name: Build Full Release APK
+        run: ./gradlew :app:assembleFullRelease --no-daemon --stacktrace
+
+      - name: Verify and Locate Signed APK
+        id: locate_apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/full/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::Release APK not found!"
+            exit 1
+          fi
+          echo "Found APK at $APK_PATH"
+          mkdir -p build/dist
+          cp "$APK_PATH" build/dist/CleanYourTV-Release-Signed.apk
+          echo "apk_path=build/dist/CleanYourTV-Release-Signed.apk" >> $GITHUB_OUTPUT
+
+      - name: Upload Signed APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanYourTV-Release-Signed
+          path: build/dist/CleanYourTV-Release-Signed.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release (on tags or dispatch)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/dist/CleanYourTV-Release-Signed.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false

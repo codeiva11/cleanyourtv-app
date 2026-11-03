@@ -103,7 +103,9 @@ enum class SettingKey(val ns: SettingsNs, val key: String, val valueShape: Regex
     ACCESSIBILITY_ENABLED(SettingsNs.SECURE, "accessibility_enabled", Regex("^[01]$")),
     ADB_ENABLED(SettingsNs.GLOBAL, "adb_enabled", Regex("^0$")),
     ADB_WIFI_ENABLED(SettingsNs.GLOBAL, "adb_wifi_enabled", Regex("^0$")),
-    DEVICE_NAME(SettingsNs.GLOBAL, "device_name", Regex("^[A-Za-z0-9 ._-]{1,32}$")) }
+    DEVICE_NAME(SettingsNs.GLOBAL, "device_name", Regex("^[A-Za-z0-9 ._-]{1,32}$")),
+    FREEPLAY_ENABLED(SettingsNs.SECURE, "freeplay_enabled", Regex("^[01]$")),
+    LIMIT_AD_TRACKING(SettingsNs.SECURE, "limit_ad_tracking", Regex("^[01]$")) }
 
 enum class GroupDefault { DISABLE, ASK, KEEP }
 enum class Platform { ANDROID_TV, GOOGLE_TV, FIRE_OS, TCL_CN }

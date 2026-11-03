@@ -245,7 +245,7 @@ class DefaultPlanner(
 
         fun setup(req: PlanRequest.Setup) {
             val profile = (req.resolution as? ProfileResolution.Exact)?.profile
-            val packageGroups: List<PackageGroup> = when (val r = req.resolution) {
+            val rawPackageGroups: List<PackageGroup> = when (val r = req.resolution) {
                 is ProfileResolution.Exact -> r.profile.groups
                 is ProfileResolution.BrandSureSet -> r.sureSet
                 is ProfileResolution.None -> emptyList()
@@ -256,6 +256,13 @@ class DefaultPlanner(
                 is ProfileResolution.None -> r.stockLaunchers
             }
             val choices = req.choices
+            // Intelligent REA Engine: If autoDebloat/cleanStockHome is set and no package groups exist for this TV, auto-detect bloatware!
+            val packageGroups: List<PackageGroup> = if ((choices.autoDebloat || choices.cleanStockHome) && rawPackageGroups.isEmpty()) {
+                val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers)
+                ReaEngine.synthesizeReaGroups(candidates)
+            } else {
+                rawPackageGroups
+            }
             val covered = mutableSetOf<PackageName>()
             var disabled = 0
             fun wanted(pkg: PackageName, default: GroupDefault): Boolean = when (default) {
@@ -342,7 +349,11 @@ class DefaultPlanner(
                 val version = if (launcherSteps) req.launcher.versionCode else state(launcher.pkg)?.versionCode
                 look(config, req.wallpaper, overlayGone, FailurePolicy.CONTINUE, themeRoute(version))
             }
-            if (choices.takeover) takeover(req.launcher, profile, stockLaunchers, launcherSteps, choices.wizardWifi)
+            if (choices.takeover) {
+                takeover(req.launcher, profile, stockLaunchers, launcherSteps, choices.wizardWifi)
+            } else if (choices.cleanStockHome && ReaEngine.isStockGoogleTvLauncher(snapshot)) {
+                cleanStockHome(stockLaunchers)
+            }
             if (choices.homeHelper) helper(req.launcher, profile, stockLaunchers, launcherSteps, config)
             homeSwitchRows()
             val curtain = req.curtain
@@ -474,6 +485,22 @@ class DefaultPlanner(
             val i = groups.indexOfFirst { it.id == GROUP_HOME }
             if (i >= 0) groups[i] = groups[i].let { it.with(rows + it.rows) }
             else groups += GroupSummary(GROUP_HOME, TITLE_HOME, rows.size, rows.size, rows)
+        }
+
+        fun cleanStockHome(stockLaunchers: List<Component>) {
+            val stockRows = mutableListOf<RowSummary>()
+            if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS) && !isOff(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
+                stockRows += RowSummary(ReaEngine.STOCK_TV_RECOMMENDATIONS, name(ReaEngine.STOCK_TV_RECOMMENDATIONS), description(ReaEngine.STOCK_TV_RECOMMENDATIONS), off = true, protected = false, whyProtected = null)
+                disable(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Disabling TV recommendations ad provider")
+            }
+            if (stockRows.isNotEmpty()) {
+                groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
+            }
+            step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Disabling auto-playing video ads", FailurePolicy.SKIP_IF_REFUSED)
+            step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Restricting background ad tracking", FailurePolicy.SKIP_IF_REFUSED)
+            val stock = stockLaunchers.firstOrNull { it.pkg == ReaEngine.STOCK_GOOGLE_LAUNCHER }
+                ?: Component(ReaEngine.STOCK_GOOGLE_LAUNCHER, ".MainActivity")
+            step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.SKIP_IF_REFUSED)
         }
 
         // The pin, or a newer build of ours, is on the TV (launcher v2.4.0 plan: a higher versionCode
@@ -1055,6 +1082,8 @@ class DefaultPlanner(
         const val REASON_HELPER_LOOK = "the Home button helper needs the look that names the TV's own home screen, and it could not be made"
         const val APK_NAME_HEX = 40
         const val GROUP_CUSTOM = "custom"
+        const val GROUP_STOCK_CLEAN = "stock_clean"
+        const val TITLE_STOCK_CLEAN = "Clean Stock Home"
         const val GROUP_LAUNCHER = "launcher"
         const val GROUP_HOME = "home"
         const val GROUP_PUT_BACK = "put_back"
