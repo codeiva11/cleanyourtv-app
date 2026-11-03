@@ -81,10 +81,20 @@ jobs:
           path: build/dist/CleanYourTV-Release-Signed.apk
           if-no-files-found: error
 
-      - name: Create GitHub Release (on tags or dispatch)
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+      - name: Determine Release Tag
+        id: release_tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+            echo "tag=v${VERSION}-${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
           files: build/dist/CleanYourTV-Release-Signed.apk
           generate_release_notes: true
           draft: false
