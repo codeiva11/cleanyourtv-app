@@ -1,6 +1,7 @@
 package tv.cleanyour.core.flows
 
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.PackageName
@@ -18,6 +19,19 @@ import tv.cleanyour.core.spec.StyleId
 import tv.cleanyour.core.spec.Theme
 import tv.cleanyour.core.spec.ThemeSource
 import tv.cleanyour.core.store.Clock
+
+// The look stack's choice types. They lived in the deleted HomeScreenMachine (AppChoice,
+// PictureOption) and SetupMachine (ThemeOption); the look stack still needs them — LookContext
+// carries AppChoices, and offered()/pictureOptions() return the other two — so they moved here.
+data class AppChoice(val pkg: PackageName, val name: String)
+
+// 0.4.0: a picture of the Picture row: a gallery picture by id, with its file for the thumbnail
+// (null when it has none on this phone). look2: `until`, the last day of a dated picture (Diwali,
+// "Until 10 Nov"), and its background colour (spec 6.2).
+data class PictureOption(val id: String, val name: String, val path: String?, val until: LocalDate? = null,
+    val backgroundArgb: Int = 0xFF000000.toInt())
+
+data class ThemeOption(val id: String, val name: String, val description: String, val wallpaperPath: String? = null)
 
 // What a draft depends on besides the choice: the dock as the TV shows it (the waiting apps too)
 // and the TV's other apps, the photos it can show (the kept one, one just made, the earlier look's)

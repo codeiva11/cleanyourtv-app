@@ -6,7 +6,6 @@ import tv.cleanyour.core.engine.RunState
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.RemoteDir
 import tv.cleanyour.core.model.TvId
-import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.Step
 import tv.cleanyour.core.spec.resolveFor
 
@@ -106,7 +105,9 @@ object RunLines {
     // 0.4.7: a step that puts the look's file in the launcher's folder: config.json or wallpaper.jpg written, or the
     // picture removed, by a sync push or the launcher's ThemeProvider (RFC-THEME-1: the route is on the op, the path
     // is the overlay's either way). Done's look line (SetupExtras.doneLookFailed) and the report's agree on it.
-    fun isLookSend(step: Step): Boolean = step.group == DefaultPlanner.GROUP_THEME && when (val op = step.op) {
+    // The "theme" group id survives only in stored 0.4.7 plans (DefaultPlanner.GROUP_THEME
+    // went with the launcher removal); new plans have no look-send steps at all.
+    fun isLookSend(step: Step): Boolean = step.group == "theme" && when (val op = step.op) {
         is Op.PushAsset -> op.dest.dir == RemoteDir.OVERLAY
         is Op.RemoveFile -> op.path.dir == RemoteDir.OVERLAY
         else -> false

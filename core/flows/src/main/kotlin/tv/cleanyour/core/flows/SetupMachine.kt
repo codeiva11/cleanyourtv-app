@@ -131,6 +131,8 @@ data class SetupExtras(
     // whether the plan on screen is that list (the person chose to try it).
     val candidate: CandidateOffer? = null,
     val candidateTried: Boolean = false,
+    // 0.4.8 (Restarts): what this phone counted for the TV, and what the Done restart check's read said (HELD, FAILED, or null before it).
+    val restarts: RestartTally? = null,
     val restartRead: RestartRead? = null,
 ) {
 }
@@ -725,7 +727,7 @@ class SetupMachine(
             is PlanResult.Ok -> {
                 setupPlan = r.plan
                 deps.log.line("setup: plan ready, ${r.plan.steps.size} steps, ${r.plan.steps.count { it.op is Op.Disable }} to switch off, " +
-                    "${r.plan.groups.size} groups")
+                    "${r.plan.summary.groups.size} groups")
                 val sent = deps.sentReports?.let { s -> attempt { s.load(record.id) }.getOrNull() }
                 mutableExtras.update {
                     it.copy(commands = commandsOf(r.plan), unknownModel = res !is ProfileResolution.Exact,
@@ -961,7 +963,7 @@ class SetupMachine(
         val lookFailed = homeOn && skipped.any { RunLines.isLookSend(it) }
         val done = record.copy(
             wizard = null,
-            launcher = if (homeOn && ourLauncher != null) LauncherState(ourLauncher.versionCode, ourLauncher.signer, digest ?: record.launcher?.overlayDigest, digest ?: record.launcher?.ourOverlayDigest)
+            launcher = if (homeOn && ourLauncher?.signer != null) LauncherState(ourLauncher.versionCode, ourLauncher.signer, digest ?: record.launcher?.overlayDigest, digest ?: record.launcher?.ourOverlayDigest)
                 else record.launcher?.let { l -> if (digest != null) l.copy(overlayDigest = digest, ourOverlayDigest = digest) else l },
             lastSeenAt = deps.clock.nowMs(),
         )

@@ -39,6 +39,7 @@ import tv.cleanyour.core.spec.StyleId
 import tv.cleanyour.core.spec.FactsTable
 import tv.cleanyour.core.spec.HomeFit
 import tv.cleanyour.core.spec.Looks
+import tv.cleanyour.core.spec.PictureSource
 import tv.cleanyour.core.spec.ProfileSource
 import tv.cleanyour.core.spec.ThemeSource
 import tv.cleanyour.core.spec.TilesChoice
@@ -92,6 +93,8 @@ class ManageDeps(
     val documents: DocumentStore,
     val blobs: BlobStore,
     val themes: ThemeSource,
+    // 0.4.0: the pictures any look can show instead of its own (the app's ThemeSource is one).
+    val pictures: PictureSource = themes as? PictureSource ?: PictureSource.NONE,
     val restorePoint: RestorePointWriter,
     val bundleWriter: RestoreBundleWriter,
     val registry: Registry,

@@ -4,6 +4,7 @@ import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.HomeResolution
 import tv.cleanyour.core.model.Op
+import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.Profile
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.ops.HomePlaceholder
