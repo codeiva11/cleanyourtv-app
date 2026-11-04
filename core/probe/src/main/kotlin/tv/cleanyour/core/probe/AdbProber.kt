@@ -10,6 +10,7 @@ import tv.cleanyour.core.model.DeviceFacts
 import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.HdmiSource
 import tv.cleanyour.core.model.HomeResolution
+import tv.cleanyour.core.model.PACKAGE_RE
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.PackageState
 import tv.cleanyour.core.model.RemotePath
