@@ -75,6 +75,8 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         }
         is Op.Uninstall -> Rendered(op, lines(line(PM, "uninstall", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
+        is Op.InstallExisting -> Rendered(op, lines(line(PM, "install-existing", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
+            Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
         is Op.SettingsPut -> {
             val ns = op.key.ns.name.lowercase()
             val value: String? = op.value
@@ -245,7 +247,9 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         is Op.AccessibilityAdd -> Op.AccessibilityRemove(null, op.component)
         is Op.ArmHelperWatchdog -> Op.KillWatchdog(op.token)
         is Op.AccessibilityRemove -> null
-        is Op.Uninstall, is Op.RemoveFile, is Op.RestartHome, is Op.StartActivity, is Op.Mkdir,
+        is Op.Uninstall -> if (prior.present == true) Op.InstallExisting(op.pkg) else null
+        is Op.InstallExisting -> if (prior.present == false) Op.Uninstall(op.pkg) else null
+        is Op.RemoveFile, is Op.RestartHome, is Op.StartActivity, is Op.Mkdir,
         is Op.ConfirmHome, is Op.KillWatchdog, is Op.VerifyHome, is Op.Read, is Op.Settle,
         Op.PressHome, Op.Reboot, Op.DebugOff, is Op.CurtainCue -> null
     }
@@ -261,6 +265,8 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             is Op.InstallStream -> installed(op.pkg, op.versionCode, verifyOutput)
             is Op.Uninstall -> if (lines.none { it.startsWith("package:") && it.endsWith("=" + op.pkg.value) }) VerifyResult.Ok
                 else mismatch("${op.pkg.value} absent from pm list packages -f")
+            is Op.InstallExisting -> if (lines.any { it.startsWith("package:") && it.endsWith("=" + op.pkg.value) }) VerifyResult.Ok
+                else mismatch("${op.pkg.value} present in pm list packages -f")
             is Op.SettingsPut -> {
                 val prefix = op.key.key + "="
                 val found = lines.firstOrNull { it.startsWith(prefix) }?.removePrefix(prefix)

@@ -46,6 +46,7 @@ object UndoOrder {
         is Op.Install -> Target.App(op.pkg)
         is Op.InstallStream -> Target.App(op.pkg)
         is Op.Uninstall -> Target.App(op.pkg)
+        is Op.InstallExisting -> Target.App(op.pkg)
         is Op.PushAsset -> Target.File(op.dest)
         is Op.RemoveFile -> Target.File(op.path)
         is Op.AccessibilityAdd -> Target.Helper(op.component.pkg)

@@ -76,7 +76,7 @@ object TvJson {
         "wizard" to (tv.wizard?.let { w -> obj("step" to p(w.step), "level" to p(w.level.name),
             "kept" to JsonArray(w.kept.map { p(it.value) }), "extraOff" to JsonArray(w.extraOff.map { p(it.value) }),
             "keepDebuggingOn" to p(w.keepDebuggingOn), "planId" to p(w.planId?.value), "updatedAtMs" to p(w.updatedAtMs),
-            "cleanStockHome" to p(w.cleanStockHome), "autoDebloat" to p(w.autoDebloat)) } ?: JsonNull),
+            "cleanStockHome" to p(w.cleanStockHome), "autoDebloat" to p(w.autoDebloat), "uninstallBloat" to p(w.uninstallBloat)) } ?: JsonNull),
         "lastSeenAt" to p(tv.lastSeenAt), "debugging" to p(tv.debugging.name),
     )).encodeToByteArray()
 
@@ -97,7 +97,8 @@ object TvJson {
                 w.strings("kept").map(::PackageName).toSet(), w.strings("extraOff").map(::PackageName).toSet(),
                 w.bool("keepDebuggingOn") ?: false, w.str("planId")?.let(::PlanId), w.long("updatedAtMs") ?: 0,
                 cleanStockHome = w.bool("cleanStockHome") ?: false,
-                autoDebloat = w.bool("autoDebloat") ?: false) },
+                autoDebloat = w.bool("autoDebloat") ?: true,
+                uninstallBloat = w.bool("uninstallBloat") ?: true) },
             lastSeenAt = o.long("lastSeenAt") ?: 0, debugging = DebugState.valueOf(o.str("debugging") ?: "UNKNOWN"),
         )
     }

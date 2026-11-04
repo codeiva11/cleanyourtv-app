@@ -41,6 +41,13 @@ sealed interface Op {
     data class Install(val apk: RemotePath, val sha256: Sha256, val pkg: PackageName, val versionCode: Long, val signer: Sha256, val flags: Set<InstallFlag>) : Op   // apk.dir must be TMP
     data class InstallStream(val blob: BlobRef, val sha256: Sha256, val pkg: PackageName, val versionCode: Long, val signer: Sha256) : Op
     data class Uninstall(val pkg: PackageName) : Op
+    // RFC-UNINSTALL-1 (2026-11-04, fork): the inverse of Uninstall for a system app the shell
+    // removed: `pm install-existing --user 0 <pkg>` brings it back from /system, so Undo
+    // everything can put back bloat the plan uninstalled. The planner only ever uninstalls a
+    // system app (PackageState.system == true); a user-installed app has no such restore path,
+    // so it is only ever disabled. Prior.present == false on the InstallExisting step (the app
+    // was missing before the restore); its own inverse is Uninstall.
+    data class InstallExisting(val pkg: PackageName) : Op
     data class SettingsPut(val key: SettingKey, val value: String?) : Op   // value matches key.valueShape; null renders settings delete
     data class SetHome(val component: Component) : Op
     data class VerifyHome(val expected: Component) : Op

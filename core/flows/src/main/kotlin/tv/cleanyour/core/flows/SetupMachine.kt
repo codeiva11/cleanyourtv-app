@@ -419,6 +419,9 @@ class SetupMachine(
                 else if (event.pkg in d.kept) d.copy(kept = d.kept - event.pkg) else d.copy(extraOff = d.extraOff + event.pkg)
             }
             is SetupIntent.KeepDebuggingOn -> editDraft { it.copy(keepDebuggingOn = event.on) }
+            is SetupIntent.SetAutoDebloat -> editDraft { it.copy(autoDebloat = event.on) }
+            is SetupIntent.SetCleanStockHome -> editDraft { it.copy(cleanStockHome = event.on) }
+            is SetupIntent.SetUninstallBloat -> editDraft { it.copy(uninstallBloat = event.on) }
             SetupIntent.MakeItClean -> if (after is SetupState.Found && !mutableExtras.value.starting) {
                 mutableExtras.update { it.copy(starting = true) }
                 scope.launch {
@@ -721,12 +724,12 @@ class SetupMachine(
         val choices = Choices(
             kept = draft.kept, extraOff = draft.extraOff,
             keepDebuggingOn = draft.keepDebuggingOn,
-            cleanStockHome = draft.cleanStockHome, autoDebloat = draft.autoDebloat,
+            cleanStockHome = draft.cleanStockHome, autoDebloat = draft.autoDebloat, uninstallBloat = draft.uninstallBloat,
         )
         when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices), snap)) {
             is PlanResult.Ok -> {
                 setupPlan = r.plan
-                deps.log.line("setup: plan ready, ${r.plan.steps.size} steps, ${r.plan.steps.count { it.op is Op.Disable }} to switch off, " +
+                deps.log.line("setup: plan ready, ${r.plan.steps.size} steps, ${r.plan.steps.count { it.op is Op.Disable || it.op is Op.Uninstall }} to switch off or uninstall, " +
                     "${r.plan.summary.groups.size} groups")
                 val sent = deps.sentReports?.let { s -> attempt { s.load(record.id) }.getOrNull() }
                 mutableExtras.update {

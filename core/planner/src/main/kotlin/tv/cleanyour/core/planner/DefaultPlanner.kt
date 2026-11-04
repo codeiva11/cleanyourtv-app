@@ -147,7 +147,7 @@ class DefaultPlanner(
 
         fun refuse(reason: String) { reasons += reason }
         fun planned(op: Op): Boolean = steps.any { it.op == op }
-        fun putBackPlanned(pkg: PackageName): Boolean = planned(Op.Enable(pkg)) || planned(Op.DefaultState(pkg))
+        fun putBackPlanned(pkg: PackageName): Boolean = planned(Op.Enable(pkg)) || planned(Op.DefaultState(pkg)) || planned(Op.InstallExisting(pkg))
 
         // WP4 (C6, G4): a package the static denylist protects now (an earlier build switched it off,
         // like TCL G10's remote mic service) only ever takes the write towards on. The renderer
@@ -197,6 +197,19 @@ class DefaultPlanner(
         fun disable(pkg: PackageName, group: String?, policy: FailurePolicy = FailurePolicy.SKIP_IF_REFUSED, narration: String = "Switching off ${name(pkg)}") =
             step(Op.Disable(pkg), Prior(packageState = state(pkg)?.enabled), group, narration, policy)
 
+        // RFC-UNINSTALL-1: the planner's uninstall. Prior.present == true: the app was on the
+        // TV before us, so Undo everything can put it back with Op.InstallExisting.
+        fun uninstall(pkg: PackageName, group: String?, policy: FailurePolicy = FailurePolicy.SKIP_IF_REFUSED, narration: String = "Uninstalling ${name(pkg)}") =
+            step(Op.Uninstall(pkg), Prior(packageState = state(pkg)?.enabled, present = true), group, narration, policy)
+
+        // Bloat the plan switches off is permanently uninstalled, never only disabled — but only
+        // a system app: `pm install-existing` brings a system app back, a deleted user-installed
+        // app is gone for good, so that one is only ever disabled.
+        fun switchOff(pkg: PackageName, group: String?, uninstallBloat: Boolean, policy: FailurePolicy = FailurePolicy.SKIP_IF_REFUSED) {
+            if (uninstallBloat && snapshot.packages[pkg]?.system == true) uninstall(pkg, group, policy)
+            else disable(pkg, group, policy)
+        }
+
         fun enable(pkg: PackageName, group: String?, narration: String = "Switching ${name(pkg)} back on", policy: FailurePolicy = FailurePolicy.STOP_AND_ROLLBACK) =
             step(Op.Enable(pkg), Prior(packageState = state(pkg)?.enabled), group, narration, policy)
 
@@ -215,12 +228,14 @@ class DefaultPlanner(
                 is ProfileResolution.None -> r.stockLaunchers
             }
             val choices = req.choices
-            // Intelligent REA Engine: If autoDebloat/cleanStockHome is set and no package groups exist for this TV, auto-detect bloatware!
-            val packageGroups: List<PackageGroup> = if ((choices.autoDebloat || choices.cleanStockHome) && rawPackageGroups.isEmpty()) {
+            // REA default on (2026-11-04): when autoDebloat/cleanStockHome is set, REA runs even
+            // when the TV has a profile — its groups join the profile's, profile rows first, so the
+            // profile wins a package both know (the `covered` set skips the REA row for it).
+            val packageGroups: List<PackageGroup> = rawPackageGroups + if (choices.autoDebloat || choices.cleanStockHome) {
                 val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers)
                 ReaEngine.synthesizeReaGroups(candidates)
             } else {
-                rawPackageGroups
+                emptyList()
             }
             val covered = mutableSetOf<PackageName>()
             var disabled = 0
@@ -251,7 +266,7 @@ class DefaultPlanner(
                     if ((why == null || why == REASON_UPDATES || why == REASON_PATCHWALL_FEED) && isOff(pkg)) continue
                     val off = why == null && wanted
                     rows += RowSummary(pkg, name(pkg), description(pkg), off, why != null, why)
-                    if (off) { disable(pkg, group.id); disabled++ }
+                    if (off) { switchOff(pkg, group.id, choices.uninstallBloat); disabled++ }
                 }
                 groups += GroupSummary(group.id, group.title, rows.count { it.off }, rows.size, rows)
             }
@@ -264,7 +279,7 @@ class DefaultPlanner(
                 if (why != null) { refuse("${name(pkg)} cannot be switched off: $why"); continue }
                 if (isOff(pkg)) continue
                 custom += RowSummary(pkg, name(pkg), description(pkg), off = true, protected = false, whyProtected = null)
-                disable(pkg, GROUP_CUSTOM); disabled++
+                switchOff(pkg, GROUP_CUSTOM, choices.uninstallBloat); disabled++
             }
             if (custom.isNotEmpty()) groups += GroupSummary(GROUP_CUSTOM, "Also switched off", custom.size, custom.size, custom)
             // beta4 (issue #945, review of beta4): a 0.4.5 Setup on the Xiaomi brand set switched Mi TV+
@@ -281,15 +296,19 @@ class DefaultPlanner(
             keepNames = choices.kept.filter { installed(it) }.map { name(it) }.sorted()
 
             if (choices.cleanStockHome && ReaEngine.isStockGoogleTvLauncher(snapshot)) {
-                cleanStockHome(stockLaunchers)
+                cleanStockHome(stockLaunchers, choices.uninstallBloat)
             }
         }
 
-        fun cleanStockHome(stockLaunchers: List<Component>) {
+        fun cleanStockHome(stockLaunchers: List<Component>, uninstallBloat: Boolean) {
             val stockRows = mutableListOf<RowSummary>()
             if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS) && !isOff(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
                 stockRows += RowSummary(ReaEngine.STOCK_TV_RECOMMENDATIONS, name(ReaEngine.STOCK_TV_RECOMMENDATIONS), description(ReaEngine.STOCK_TV_RECOMMENDATIONS), off = true, protected = false, whyProtected = null)
-                disable(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Disabling TV recommendations ad provider")
+                if (uninstallBloat && snapshot.packages[ReaEngine.STOCK_TV_RECOMMENDATIONS]?.system == true) {
+                    uninstall(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Uninstalling TV recommendations ad provider")
+                } else {
+                    disable(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Disabling TV recommendations ad provider")
+                }
             }
             if (stockRows.isNotEmpty()) {
                 groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
@@ -321,7 +340,15 @@ class DefaultPlanner(
         // ---- Manage ------------------------------------------------------------------------------
 
         fun putBack(pkg: PackageName) {
-            if (!installed(pkg)) { refuse("${pkg.value} is not on this TV"); return }
+            if (!installed(pkg)) {
+                // RFC-UNINSTALL-1: a system app we uninstalled comes back with
+                // `pm install-existing`; anything else that is not on the TV is not ours.
+                if (journals.any { (it.op as? Op.Uninstall)?.pkg == pkg && it.prior?.present == true }) {
+                    step(Op.InstallExisting(pkg), Prior(present = false), GROUP_PUT_BACK, "Putting back ${name(pkg)}", FailurePolicy.STOP_AND_ROLLBACK)
+                    return
+                }
+                refuse("${pkg.value} is not on this TV"); return
+            }
             if (!isOff(pkg)) return   // already on
             // The wizard quirk (R1 R-3): on a TV whose wizard takes the Home button back (issue #49),
             // the wizard comes back on only with the TV's own home screen, never under the new one.
@@ -493,6 +520,16 @@ class DefaultPlanner(
                     UndoOrder.Target.Home -> if (originalHome != null && originalHome != launcher) useStockHome(originalHome, null, changes)
                     is UndoOrder.Target.App -> {
                         val pkg = t.pkg
+                        if (c.op is Op.Uninstall) {
+                            // RFC-UNINSTALL-1: we uninstalled bloat the TV had — put it back.
+                            // `pm install-existing` restores a system app the shell removed; the
+                            // planner never uninstalls a user-installed app, so there is always
+                            // something to bring back.
+                            if (c.prior?.present == true && !installed(pkg)) {
+                                step(Op.InstallExisting(pkg), Prior(present = false), GROUP_UNDO, "Putting back ${name(pkg)}", FailurePolicy.CONTINUE)
+                            }
+                            continue
+                        }
                         if (pkg !in ourApps || !installed(pkg)) continue
                         if (pkg == launcher.pkg && !removeLauncher) continue
                         if (pkg == launcher.pkg && snapshot.home.resolved == launcher && (originalHome == null || originalHome == launcher)) {

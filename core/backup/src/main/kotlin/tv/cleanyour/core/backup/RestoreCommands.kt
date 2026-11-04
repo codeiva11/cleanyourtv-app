@@ -109,7 +109,9 @@ class RestoreCommands(private val renderer: OpRenderer) {
         val inverse = renderer.inverse(change.op, prior)?.let { if (it is Op.AccessibilityRemove && helperOn) it.copy(offIfEmpty = true) else it }
             ?: return if (nothingToPutBack(change.op)) null
             else RestoreStep(RestoreStepKind.NOT_FROM_LAPTOP, change, null, what, emptyList(), cannotUndo(change.op))
-        if (isTransient(inverse) || packageOf(inverse)?.let { it in gone } == true) return null
+        // RFC-UNINSTALL-1: an InstallExisting is aimed at a gone app on purpose — it is the
+        // step that puts it back — so the gone guard does not apply to it.
+        if (isTransient(inverse) || (inverse !is Op.InstallExisting && packageOf(inverse)?.let { it in gone } == true)) return null
         val rendered = try {
             renderer.render(inverse)
         } catch (e: RenderRefused) {
@@ -164,6 +166,7 @@ class RestoreCommands(private val renderer: OpRenderer) {
             is Op.Disable -> op.pkg
             is Op.DefaultState -> op.pkg
             is Op.Uninstall -> op.pkg
+            is Op.InstallExisting -> op.pkg
             is Op.SetHome -> op.component.pkg
             else -> null
         }
@@ -179,6 +182,7 @@ class RestoreCommands(private val renderer: OpRenderer) {
             is Op.Install -> "Installed ${op.pkg.value}"
             is Op.InstallStream -> "Installed ${op.pkg.value}"
             is Op.Uninstall -> "Removed ${op.pkg.value}"
+            is Op.InstallExisting -> "Put back ${op.pkg.value}"
             is Op.SettingsPut -> if (op.value == null) "Cleared the setting ${op.key.key}" else "Set ${op.key.key} to ${op.value}"
             is Op.SetHome -> "Made ${op.component.flat} the home screen"
             is Op.PushAsset -> "Wrote ${op.dest.absolute}"
@@ -193,6 +197,7 @@ class RestoreCommands(private val renderer: OpRenderer) {
             is Op.Disable -> "Switch off again: ${op.pkg.value}"
             is Op.DefaultState -> "Back to its default state: ${op.pkg.value}"
             is Op.Uninstall -> "Remove the app: ${op.pkg.value}"
+            is Op.InstallExisting -> "Put the app back: ${op.pkg.value}"
             is Op.SettingsPut -> if (op.value == null) "Setting ${op.key.key} back to not set" else "Setting ${op.key.key} back to ${op.value}"
             is Op.SetHome -> "Home screen back to ${op.component.flat}"
             is Op.RemoveFile -> "Delete ${op.path.absolute}"

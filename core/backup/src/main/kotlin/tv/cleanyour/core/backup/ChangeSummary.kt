@@ -47,6 +47,7 @@ data class ChangeSummary(
                     is Op.DefaultState -> { touch(op.pkg, c); off[op.pkg] = false }
                     is Op.Install -> if (c.prior?.present != true) installed += op.pkg
                     is Op.InstallStream -> if (c.prior?.present != true) installed += op.pkg
+                    is Op.InstallExisting -> if (c.prior?.present != true) installed += op.pkg
                     // An uninstall takes the app's own folder on shared storage with it
                     // (/sdcard/Android/data/<pkg>/, where the launcher's look files live), so the
                     // files we wrote there are gone from the TV too (QA 0.4.5-beta1: after Undo

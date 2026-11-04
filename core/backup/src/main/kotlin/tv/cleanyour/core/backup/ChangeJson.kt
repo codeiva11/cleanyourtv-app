@@ -92,6 +92,7 @@ object ChangeJson {
                 put("versionCode", op.versionCode); put("signer", op.signer.hex)
             }
             is Op.Uninstall -> put("pkg", op.pkg.value)
+            is Op.InstallExisting -> put("pkg", op.pkg.value)
             is Op.SettingsPut -> { put("key", op.key.name); put("value", op.value) }
             is Op.SetHome -> put("component", op.component.flat)
             is Op.VerifyHome -> put("expected", op.expected.flat)
@@ -130,6 +131,7 @@ object ChangeJson {
         )
         "install_stream" -> Op.InstallStream(decodeBlob(o.obj("blob")), o.sha("sha256"), o.pkg("pkg"), o.long("versionCode"), o.sha("signer"))
         "uninstall" -> Op.Uninstall(o.pkg("pkg"))
+        "install_existing" -> Op.InstallExisting(o.pkg("pkg"))
         "settings_put" -> Op.SettingsPut(SettingKey.valueOf(o.str("key")), o.strOrNull("value"))
         "set_home" -> Op.SetHome(component(o.str("component")))
         "verify_home" -> Op.VerifyHome(component(o.str("expected")))
@@ -163,6 +165,7 @@ object ChangeJson {
         is Op.Install -> "install"
         is Op.InstallStream -> "install_stream"
         is Op.Uninstall -> "uninstall"
+        is Op.InstallExisting -> "install_existing"
         is Op.SettingsPut -> "settings_put"
         is Op.SetHome -> "set_home"
         is Op.VerifyHome -> "verify_home"

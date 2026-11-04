@@ -1313,6 +1313,7 @@ internal object Staleness {
         is Op.Disable -> op.pkg
         is Op.DefaultState -> op.pkg
         is Op.Uninstall -> op.pkg
+        is Op.InstallExisting -> op.pkg
         else -> null
     }
 
@@ -1327,6 +1328,7 @@ internal object Staleness {
                 is Op.Uninstall -> if (prior.present == true && op.pkg !in snapshot.packages) out += "${op.pkg.value}: was installed, now missing"
                 is Op.Install -> presentDiff(op.pkg, prior, snapshot, out)
                 is Op.InstallStream -> presentDiff(op.pkg, prior, snapshot, out)
+                is Op.InstallExisting -> presentDiff(op.pkg, prior, snapshot, out)
                 is Op.SettingsPut -> if (op.key in snapshot.settings) {
                     val now = snapshot.settings[op.key]
                     if (now != prior.settingValue) out += "${op.key.key}: was ${prior.settingValue ?: "unset"}, now ${now ?: "unset"}"

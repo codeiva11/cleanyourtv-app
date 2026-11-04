@@ -345,6 +345,18 @@ internal fun ColumnScope.CustomiseContent(
             stringResource(R.string.customise_keep_debugging), extras.draft?.keepDebuggingOn == true,
             { actions.intent(SetupIntent.KeepDebuggingOn(it)) }, subtitle = stringResource(R.string.customise_keep_debugging_warning), warning = true,
         )
+        SwitchRow(
+            stringResource(R.string.customise_auto_debloat), extras.draft?.autoDebloat == true,
+            { actions.intent(SetupIntent.SetAutoDebloat(it)) }, subtitle = stringResource(R.string.customise_auto_debloat_note),
+        )
+        SwitchRow(
+            stringResource(R.string.customise_clean_stock_home), extras.draft?.cleanStockHome == true,
+            { actions.intent(SetupIntent.SetCleanStockHome(it)) }, subtitle = stringResource(R.string.customise_clean_stock_home_note),
+        )
+        SwitchRow(
+            stringResource(R.string.customise_uninstall_bloat), extras.draft?.uninstallBloat == true,
+            { actions.intent(SetupIntent.SetUninstallBloat(it)) }, subtitle = stringResource(R.string.customise_uninstall_bloat_warning), warning = true,
+        )
     }
     Overline(stringResource(R.string.customise_group_commands), Modifier.padding(start = 4.dp, top = 16.dp, bottom = 8.dp))
     Body(stringResource(R.string.customise_commands_intro), Modifier.padding(start = 4.dp))

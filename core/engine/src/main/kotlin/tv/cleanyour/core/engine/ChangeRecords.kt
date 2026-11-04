@@ -9,7 +9,7 @@ import tv.cleanyour.core.ops.UndoOrder
 object ChangeRecords {
     // The ops that change the TV. Reads, waits, the watchdog and process starts are not changes.
     fun isChange(op: Op): Boolean = when (op) {
-        is Op.Disable, is Op.Enable, is Op.DefaultState, is Op.Install, is Op.InstallStream, is Op.Uninstall,
+        is Op.Disable, is Op.Enable, is Op.DefaultState, is Op.Install, is Op.InstallStream, is Op.Uninstall, is Op.InstallExisting,
         is Op.SettingsPut, is Op.SetHome, is Op.PushAsset, is Op.RemoveFile -> true
         else -> false
     }
