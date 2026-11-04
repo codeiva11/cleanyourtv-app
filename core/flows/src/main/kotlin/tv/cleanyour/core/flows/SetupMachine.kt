@@ -954,6 +954,8 @@ class SetupMachine(
         // The launcher an old plan's switch put on the TV, from the snapshot's read of it, so Manage
         // knows what is on the TV. A stock-only run never installs one.
         val ourLauncher = snapshot?.packages?.get(Launcher.pkg)
+        // signer is a public property from another module, so it does not smart-cast: capture it first.
+        val ourSigner = ourLauncher?.signer
         val pushed = plan?.let { pl -> deps.ledger.changes(tvId).lastOrNull { c -> c.planId == pl.id && (c.op as? Op.PushAsset)?.dest?.let { d -> d.dir == RemoteDir.OVERLAY && d.segments.last() == "config.json" } == true } }
         val digest = (pushed?.op as? Op.PushAsset)?.sha256
         // UX finding 18 (issues #1279, #1649): the look's steps (config.json or the picture, by a sync
@@ -963,7 +965,7 @@ class SetupMachine(
         val lookFailed = homeOn && skipped.any { RunLines.isLookSend(it) }
         val done = record.copy(
             wizard = null,
-            launcher = if (homeOn && ourLauncher?.signer != null) LauncherState(ourLauncher.versionCode, ourLauncher.signer, digest ?: record.launcher?.overlayDigest, digest ?: record.launcher?.ourOverlayDigest)
+            launcher = if (homeOn && ourLauncher != null && ourSigner != null) LauncherState(ourLauncher.versionCode, ourSigner, digest ?: record.launcher?.overlayDigest, digest ?: record.launcher?.ourOverlayDigest)
                 else record.launcher?.let { l -> if (digest != null) l.copy(overlayDigest = digest, ourOverlayDigest = digest) else l },
             lastSeenAt = deps.clock.nowMs(),
         )
