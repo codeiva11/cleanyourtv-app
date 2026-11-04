@@ -18,11 +18,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -36,6 +38,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
 import tv.cleanyour.core.engine.HomeOutcome
+import tv.cleanyour.core.engine.NarrationState as EngineNarration
 import tv.cleanyour.core.flows.ChipState
 import tv.cleanyour.core.flows.Confirmations
 import tv.cleanyour.core.flows.Finishing
@@ -261,22 +264,6 @@ fun FoundScreen(
 
 fun shortDate(ms: Long, locale: java.util.Locale): String = SimpleDateFormat("d MMM", locale).format(Date(ms))
 
-// 0.4.7: the outcome, the same words on every screen: "The TV keeps its own home screen.", the
-// short reason for this TV, and "Why" for the long one.
-@Composable
-
-// RFC-HELPER-1 (test build): the outcome with the Home button helper, the same words on What we
-// found, Customise and Done: the Home button opens the new home screen, the TV's own stays on.
-@Composable
-
-
-// The Why sheet: the long reason, what would change it (when something can), the clean-up note and
-// the TV list page. `onHelpAddTv`: a list is what would change it, so the report is one tap away.
-@Composable
-
-// S3a See the list / Customise (D2, D3, D21, D22): a modal sheet that scrolls, with its own undo
-// snackbar inside the sheet window.
-@Composable
 // S3a See the list / Customise (D2, D3, D21, D22): a modal sheet that scrolls, with its own undo
 // snackbar inside the sheet window.
 @Composable
@@ -394,11 +381,6 @@ internal fun WhyContent(state: SetupState.Found, extras: SetupExtras = SetupExtr
         Body(r.whyProtected ?: r.description, Modifier.padding(top = 4.dp))
     }
 }
-
-@Composable
-
-
-
 
 // S4a Making it clean: narration, live thumbnail, the quiet "Stop and undo" (UX 4a, D18, D32).
 @Composable
@@ -551,9 +533,6 @@ internal fun DetailsContent(lines: List<String>) {
 
 // S5 Done (D7, D24, D31, UX 4.8 restart flow).
 // 0.4.7 (UX findings 6, 7, 9, 18; PM 4): on a TV that keeps its own home screen the title is
-// "Clean-up done", the lead says so with "Why", there is no card to add, and the restart line says
-// the home screen is the TV's own. After a failed switch the next step is Home screen for this TV.
-@Composable
 // S5 Done (D7, D24, D31, UX 4.8 restart flow).
 // Stock-only: the TV keeps its own home screen, so the title is "Clean-up done" (an older build's
 // switch still says "Your TV is ready"); there is no card to add, and the restart line says the
