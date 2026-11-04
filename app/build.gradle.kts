@@ -40,7 +40,6 @@ dependencies {
     implementation(project(":feature:connect"))
     implementation(project(":feature:setup"))
     implementation(project(":feature:manage"))
-    implementation(project(":feature:launcher"))
     implementation(project(":feature:modules"))
     implementation(project(":feature:backup"))
     implementation(project(":ui:design"))
