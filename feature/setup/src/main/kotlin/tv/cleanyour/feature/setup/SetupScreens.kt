@@ -1,3 +1,8 @@
+// CytBottomSheet takes the Material 3 sheet state, which is still marked experimental.
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package tv.cleanyour.feature.setup
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -98,10 +103,6 @@ import tv.cleanyour.ui.design.component.rememberUndoSnackbarState
 import tv.cleanyour.ui.design.component.rememberPng
 import tv.cleanyour.ui.design.theme.CytTheme
 import tv.cleanyour.ui.design.theme.Glow
-// CytBottomSheet takes the Material 3 sheet state, which is still marked experimental.
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
-
-package tv.cleanyour.feature.setup
 
 
 // Screens S2d probing, S3, S3a, S3b, S4a, S4b, S4c to S4e and S5 (PRODUCT-SPEC 4, UX 2 screens 3 to 5,

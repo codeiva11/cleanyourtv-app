@@ -1,3 +1,5 @@
+package tv.cleanyour.core.flows
+
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -46,7 +48,6 @@ import tv.cleanyour.core.store.DocumentStore
 import tv.cleanyour.core.store.SnapshotStore
 import tv.cleanyour.core.store.TvRepository
 import tv.cleanyour.core.trust.ApkInspector
-package tv.cleanyour.core.flows
 
 
 // One-shot effects of the Manage family (M1 to M8). Snackbars carry a kind and a name; the screen

@@ -1,3 +1,5 @@
+package tv.cleanyour.core.flows
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -66,7 +68,6 @@ import tv.cleanyour.core.store.GatePass
 import tv.cleanyour.core.ops.Transfer
 import tv.cleanyour.core.store.SnapshotStore
 import tv.cleanyour.core.store.TvRepository
-package tv.cleanyour.core.flows
 
 
 // How the wizard starts (ARCHITECTURE 2.2 start destination): fresh from Welcome, continuing a
