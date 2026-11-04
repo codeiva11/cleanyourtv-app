@@ -14,7 +14,6 @@ import tv.cleanyour.core.planner.PlannerFixtures.profile
 import tv.cleanyour.core.planner.PlannerFixtures.setup
 import tv.cleanyour.core.planner.PlannerFixtures.snapshot
 import tv.cleanyour.core.spec.ProfileResolution
-import tv.cleanyour.testing.fixtures.FakeConfigTransport
 import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.FakeProfileSource
 import kotlin.test.Test
@@ -34,7 +33,7 @@ class KeepUpdatesOnTest {
     private val snap = snapshot(extra = mapOf(ota to on, helper to on, fota to on))
     private val source = FakeProfileSource(listOf(prof)).also { it.resolver = { _, all -> ProfileResolution.Exact(all.single()) } }
 
-    private fun planner(keep: Boolean) = DefaultPlanner(PlannerFixtures.clock, FakeIdGen(), ShellRenderer(), FakeConfigTransport(), "0.3.0",
+    private fun planner(keep: Boolean) = DefaultPlanner(PlannerFixtures.clock, FakeIdGen(), ShellRenderer(), "0.3.0",
         profiles = source, keepUpdatesOn = keep)
 
     private fun disabled(p: Plan) = p.steps.map { it.op }.filterIsInstance<Op.Disable>().map { it.pkg }.toSet()

@@ -96,7 +96,7 @@ object Samples {
         }
         return Plan(
             id = id, tvId = tvId, kind = kind, baseSnapshot = base, steps = steps, sections = sections,
-            summary = PlanSummary(emptyList(), emptyList(), emptyList(), homeScreenPossible = true, replacesLauncher = false),
+            summary = PlanSummary(emptyList(), emptyList()),
             hash = renderer.planHash(steps.map { it.rendered }), createdAtMs = NOW_MS, appVersion = "0.1.0",
         )
     }

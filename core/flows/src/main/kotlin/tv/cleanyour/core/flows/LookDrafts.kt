@@ -44,9 +44,12 @@ internal data class LookContext(
     val dock: List<PackageName> get() = pushDock ?: apps.map { it.pkg }
 }
 
-// RFC-LOOK-SETUP-1 (0.4.0) and look2: the Look choice as both the Look sheet (HomeScreenMachine)
-// and Setup's look step (SetupMachine) make it, so the same choice gives the same draft, the same
-// preview and the same bytes wherever it is made. `edit` is the only place a LookDraft changes.
+// The Default look's id, once HomeScreenMachine's (the Look sheet is gone with the launcher).
+internal const val DEFAULT_LOOK = "default"
+
+// RFC-LOOK-SETUP-1 (0.4.0) and look2: the Look choice as the Look sheets make it, so the same choice
+// gives the same draft, the same preview and the same bytes wherever it is made. `edit` is the only
+// place a LookDraft changes.
 //
 // look2 rules (spec 6 to 8, the prototype's rowsOf, chooseStyle and autoPick): a style change puts
 // the style's own details back and says which ones changed (Keep mine puts back those that still
@@ -105,7 +108,7 @@ internal class LookDrafts(
             choice == null -> { chosen = false; LookParts(StyleId.CLASSIC, LookPicture.NONE_ID, DockLayers.DEFAULT_COLUMNS) }
             !choice.isNew -> {
                 chosen = false
-                val id = choice.lookOn(today)?.takeIf { it in LegacyLooks.table } ?: HomeScreenMachine.DEFAULT_LOOK
+                val id = choice.lookOn(today)?.takeIf { it in LegacyLooks.table } ?: DEFAULT_LOOK
                 val e = LegacyLooks.of(id)
                 val picture = choice.picture.takeUnless { Looks.dated(id) || it == LookPicture.NEW_ID } ?: e.picture
                 LookParts(e.style, picture, choice.columns?.takeIf { it in OFFERED } ?: e.columns, false, e.movement, e.lift, e.details,
@@ -344,7 +347,7 @@ internal class LookDrafts(
         }
         val legacy = p.legacyThemeId
         return LookDraft(
-            themeId = legacy ?: HomeScreenMachine.DEFAULT_LOOK, picture = p.picture, ownPictureOnly = false,
+            themeId = legacy ?: DEFAULT_LOOK, picture = p.picture, ownPictureOnly = false,
             preview = previewOf(bytes, wallpaper, ctx), columns = p.columns,
             lookColumns = legacy?.let { LegacyLooks.of(it).columns } ?: p.columns,
             style = p.style, names = p.names, movement = p.movement, movementPicked = p.movementPicked, lift = p.lift, details = p.details,

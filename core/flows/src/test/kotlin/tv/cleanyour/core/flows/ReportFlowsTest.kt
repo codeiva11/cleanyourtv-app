@@ -55,20 +55,6 @@ class ReportFlowsTest {
         assertTrue(h2.logLines.single { it.startsWith("setup: probe done") }.contains("profile brand set Xiaomi, tv "))
     }
 
-    // The home switch decision is logged once per change and kept for Manage's TV report.
-    @Test fun theHomeSwitchDecisionIsLoggedAndKept() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        h.sessions.allowPromptFor[HOST] = "AB:CD:7F:2A"
-        h.setupPlan = h.plan(listOf(Op.Disable(adPkg)), takeover = true)
-        val m = h.setup(backgroundScope)
-        toFound(h, m)
-        assertEquals(listOf("setup: home switch planned"), h.logLines.filter { it.startsWith("setup: home switch") })
-        assertEquals(HomeDecision(true, profile = "exact xiaomi-mitv-axso0"), HomeDecisions(h.documents).load(Samples.miTvId()))
-        // A Keep replans: the same decision is not logged again.
-        m.dispatch(SetupIntent.Keep(adPkg, keep = true)); settle()
-        assertEquals(1, h.logLines.count { it.startsWith("setup: home switch") })
-    }
-
     // Issue #2: step R's Enable was refused and the log said only "(f3)". Now it names the op, the
     // code and the TV's own words, and says it was the undo step.
     @Test fun aPauseNamesTheFailedOpAndWhetherItWasTheUndoStep() = runTest(timeout = 30.seconds) {
@@ -326,7 +312,7 @@ class ReportFlowsTest {
     private fun ManageDepsWith(d: ManageDeps, about: AppAbout) = ManageDeps(
         tvs = d.tvs, sessions = d.sessions, discovery = d.discovery, access = d.access, gate = d.gate, runner = d.runner, engine = d.engine,
         ledger = d.ledger, prober = d.prober, profiles = d.profiles, facts = d.facts, snapshots = d.snapshots, documents = d.documents,
-        blobs = d.blobs, themes = d.themes, launcherPin = d.launcherPin, configTransport = d.configTransport, restorePoint = d.restorePoint,
+        blobs = d.blobs, themes = d.themes, restorePoint = d.restorePoint,
         bundleWriter = d.bundleWriter, registry = d.registry, fetcher = d.fetcher, inspector = d.inspector, cardDetector = d.cardDetector,
         sessionEnd = d.sessionEnd, homePrefs = d.homePrefs, appPrefs = d.appPrefs, keyInfo = d.keyInfo, updates = d.updates,
         diagnostics = d.diagnostics, clock = d.clock, copy = d.copy, encoder = d.encoder, store = d.store, about = about,

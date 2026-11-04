@@ -49,7 +49,7 @@ object LookSamples {
     // The first send of an untouched migrated 0.4.0 look on a 2 GB TV (no auto pick): the new form
     // of its migration table row, with its saved apps in a row.
     fun next(legacy: HomeChoice): HomeChoice {
-        val id = legacy.themeId ?: HomeScreenMachine.DEFAULT_LOOK
+        val id = legacy.themeId ?: DEFAULT_LOOK
         val e = LegacyLooks.of(id)
         return HomeChoice(legacy.dock, null, cards = legacy.cards, picture = legacy.picture ?: e.picture, dim = legacy.dim,
             columns = legacy.columns ?: e.columns, style = e.style.id, movement = e.movement.id, lift = e.lift, names = false, details = e.details)

@@ -1,10 +1,8 @@
 package tv.cleanyour.core.planner
 
-import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.EnabledState
-import tv.cleanyour.core.model.FileRoute
 import tv.cleanyour.core.model.GroupDefault
 import tv.cleanyour.core.model.HomeClaimant
 import tv.cleanyour.core.model.HomeResolution
@@ -19,20 +17,14 @@ import tv.cleanyour.core.model.Prior
 import tv.cleanyour.core.model.Profile
 import tv.cleanyour.core.model.ProfileMatch
 import tv.cleanyour.core.model.Quirk
-import tv.cleanyour.core.model.RemoteDir
-import tv.cleanyour.core.model.RemotePath
 import tv.cleanyour.core.model.SettingKey
 import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.model.SnapshotReason
-import tv.cleanyour.core.ops.ConfigTransport
-import tv.cleanyour.core.ops.ConfigTransportKind
 import tv.cleanyour.core.ops.ShellRenderer
-import tv.cleanyour.core.session.TvSession
 import tv.cleanyour.core.spec.ProfileResolution
 import tv.cleanyour.core.store.SnapshotCodec
 import tv.cleanyour.testing.fixtures.FakeClock
-import tv.cleanyour.testing.fixtures.FakeConfigTransport
 import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.Fixtures
 import tv.cleanyour.testing.fixtures.MapFactsTable
@@ -77,17 +69,16 @@ object PlannerFixtures {
     fun artifact(): LauncherArtifact = Samples.launcherArtifact()
 
     fun choices(
-        kept: Set<PackageName> = emptySet(), extraOff: Set<PackageName> = emptySet(), installLauncher: Boolean = true,
-        takeover: Boolean = true, replaceSigner: Boolean = false, dock: List<PackageName>? = null,
-        wizardWifi: WizardWifi = WizardWifi.NOT_OWNER,   // D3: the TV's Wi-Fi was not saved by its setup wizard
-    ) = Choices(kept, extraOff, dock, null, installLauncher, takeover, replaceSigner, keepDebuggingOn = false, wizardWifi = wizardWifi)
+        kept: Set<PackageName> = emptySet(), extraOff: Set<PackageName> = emptySet(),
+        cleanStockHome: Boolean = false, autoDebloat: Boolean = false,
+    ) = Choices(kept, extraOff, keepDebuggingOn = false, cleanStockHome = cleanStockHome, autoDebloat = autoDebloat)
 
-    fun setup(profile: Profile? = profile(), choices: Choices = choices(), artifact: LauncherArtifact = artifact()) =
-        PlanRequest.Setup(profile?.let { ProfileResolution.Exact(it) } ?: ProfileResolution.None(listOf(stock)), choices, artifact, tv.cleanyour.core.model.Level.SIMPLE)
+    fun setup(profile: Profile? = profile(), choices: Choices = choices()) =
+        PlanRequest.Setup(profile?.let { ProfileResolution.Exact(it) } ?: ProfileResolution.None(listOf(stock)), choices)
 
-    fun planner(transport: ConfigTransport = FakeConfigTransport(), idGen: FakeIdGen = FakeIdGen(), profiles: tv.cleanyour.core.spec.ProfileSource? = null) =
-        if (profiles == null) DefaultPlanner(clock, idGen, ShellRenderer(), transport, "0.1.0")   // the R0: 15 constructor
-        else DefaultPlanner(clock, idGen, ShellRenderer(), transport, "0.1.0", profiles = profiles)
+    fun planner(idGen: FakeIdGen = FakeIdGen(), profiles: tv.cleanyour.core.spec.ProfileSource? = null) =
+        if (profiles == null) DefaultPlanner(clock, idGen, ShellRenderer(), "0.1.0")   // the R0: 15 constructor
+        else DefaultPlanner(clock, idGen, ShellRenderer(), "0.1.0", profiles = profiles)
 
     fun plan(request: PlanRequest, snapshot: Snapshot = snapshot(), journals: List<ChangeRecord> = emptyList(), planner: DefaultPlanner = planner()): Plan =
         when (val r = planner.plan(request, snapshot, facts, journals)) {
@@ -106,39 +97,7 @@ object PlannerFixtures {
     // TV no profile knows is tested on the same TV under another maker.
     fun otherMaker(s: Snapshot): Snapshot = s.copy(facts = s.facts.copy(brand = "Acme", manufacturer = "Acme")).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
 
-    // 0.4.6: a test written for the release rule (R0 on Xiaomi only) runs with it in a test build
-    // too (-Pcyt.wizardStaysAnyBrand=true, which widens R0 to every brand).
-    inline fun releaseRule(block: () -> Unit) {
-        val before = HomeSwitchRisk.anyBrandForTests
-        HomeSwitchRisk.anyBrandForTests = false
-        try { block() } finally { HomeSwitchRisk.anyBrandForTests = before }
-    }
-
     fun change(step: Int, op: Op, prior: Prior?, atMs: Long = Samples.NOW_MS + step) = ChangeRecord(tv.cleanyour.core.model.PlanId("01FAKEPLAN0000000000000001"), step, op, prior, atMs)
-}
-
-// The steps FileOverlayTransport (in :core:engine, a layer above the planner) returns, so the
-// config.json tests see the real shape: the launcher's first start, the folder, config.json,
-// wallpaper.jpg pushed or removed, and Home restarted.
-class OverlayTransport : ConfigTransport {
-    override val kind: ConfigTransportKind = ConfigTransportKind.FILE_OVERLAY
-    override suspend fun readDigest(session: TvSession): Sha256? = null
-    override fun writePlanSteps(config: BlobRef, wallpaper: BlobRef?, route: FileRoute): List<Op> {
-        require(config.size in 1..64L * 1024) { "config.json must be 1 to 65536 bytes" }
-        return listOf(
-            Op.StartActivity(PlannerFixtures.launcher, wait = true),
-            Op.Mkdir(if (route == FileRoute.THEME_PROVIDER) RemoteDir.TMP else RemoteDir.OVERLAY),
-            Op.PushAsset(config, CONFIG, config.sha256, route),
-            if (wallpaper != null) Op.PushAsset(wallpaper, WALLPAPER, wallpaper.sha256, route) else Op.RemoveFile(WALLPAPER, route),
-            Op.RestartHome(PlannerFixtures.launcher),
-        )
-    }
-    override fun resetPlanSteps(route: FileRoute): List<Op> = listOf(Op.RemoveFile(CONFIG, route), Op.RemoveFile(WALLPAPER, route), Op.RestartHome(PlannerFixtures.launcher))
-
-    companion object {
-        val CONFIG = RemotePath(RemoteDir.OVERLAY, listOf("config.json"))
-        val WALLPAPER = RemotePath(RemoteDir.OVERLAY, listOf("wallpaper.jpg"))
-    }
 }
 
 // Settings are not part of Samples.snapshot; the hash is recomputed so every store accepts it.

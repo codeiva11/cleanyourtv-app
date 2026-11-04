@@ -21,7 +21,7 @@ internal object EarlierLook {
 
     // The look a TV had before the first send from this phone: Setup's Default look.
     fun firstLook(before: HomeChoice?, dock: List<PackageName>): HomeChoice =
-        before ?: HomeChoice(dock, HomeScreenMachine.DEFAULT_LOOK)
+        before ?: HomeChoice(dock, DEFAULT_LOOK)
 
     suspend fun load(documents: DocumentStore, blobs: BlobStore, id: TvId): Saved? {
         val choice = documents.read(textPath(id)) { HomePrefs.decode(it.decodeToString()) } ?: return null

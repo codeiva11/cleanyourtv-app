@@ -122,9 +122,7 @@ class EngineTest {
         val sha = h.tv.acceptApk(bytes, curtainPkg, 1, h.signer)
         val curtain = tv.cleanyour.core.model.LauncherArtifact(curtainPkg, 1, "0.1", sha, h.signer, tv.cleanyour.core.model.BlobRef(sha, bytes.size.toLong(), "bundled:curtain.apk"))
         val base = h.setupPlan(takeover = false)
-        val req = PlanRequest.Setup(tv.cleanyour.core.spec.ProfileResolution.Exact(h.profile()),
-            tv.cleanyour.core.planner.Choices(emptySet(), emptySet(), null, null, true, false, false, false), h.artifact, tv.cleanyour.core.model.Level.SIMPLE, curtain = curtain)
-        val plan = h.plan(req)
+        val plan = h.storedCurtainPlan(base, curtain)
         val cues = plan.steps.count { it.op is Op.CurtainCue }
         assertEquals(h.debloat.size + 6, cues, "SCAN, RESTORE_SAVED, one OFF per switch-off, GROUP_DONE, INSTALL, INSTALLED, FINALE")
         assertEquals(StartResult.Started, engine.start(plan, h.tv, plan.hash, h.pass()))
@@ -151,9 +149,7 @@ class EngineTest {
         val bytes = "fake curtain apk".encodeToByteArray()
         val sha = h.tv.acceptApk(bytes, curtainPkg, 1, h.signer)
         val curtain = tv.cleanyour.core.model.LauncherArtifact(curtainPkg, 1, "0.1", sha, h.signer, tv.cleanyour.core.model.BlobRef(sha, bytes.size.toLong(), "bundled:curtain.apk"))
-        val req = PlanRequest.Setup(tv.cleanyour.core.spec.ProfileResolution.Exact(h.profile()),
-            tv.cleanyour.core.planner.Choices(emptySet(), emptySet(), null, null, true, false, false, false), h.artifact, tv.cleanyour.core.model.Level.SIMPLE, curtain = curtain)
-        val plan = h.plan(req)
+        val plan = h.storedCurtainPlan(h.setupPlan(takeover = false), curtain)
         assertEquals(StartResult.Started, engine.start(plan, h.tv, plan.hash, h.pass()))
         val firstOff = plan.steps.first { it.op is Op.Disable }.index
         var guard = 0
@@ -389,7 +385,7 @@ class EngineTest {
         val cfgSha = tv.cleanyour.testing.fixtures.sha256Of(cfg)
         h.tv.blobs[cfgSha] = cfg
         h.tv.packages[h.launcher.pkg] = tv.cleanyour.core.model.PackageState(EnabledState.ENABLED, false, 1, h.signer, false, false, null, true)
-        val theme = h.plan(PlanRequest.ApplyTheme(tv.cleanyour.core.spec.LauncherConfigDoc(), tv.cleanyour.core.model.BlobRef(cfgSha, cfg.size.toLong(), "cfg"), null))
+        val theme = h.opsPlan(*h.transport.writePlanSteps(tv.cleanyour.core.model.BlobRef(cfgSha, cfg.size.toLong(), "cfg"), null, tv.cleanyour.core.model.FileRoute.SYNC).toTypedArray())
         assertEquals(listOf("StartActivity", "Mkdir", "PushAsset", "RemoveFile", "RestartHome"), theme.steps.map { it.op::class.simpleName })
         engine.start(theme, h.tv, theme.hash, h.pass())
         h.settle(engine)
@@ -402,7 +398,9 @@ class EngineTest {
         // Install ladder without cmd: push, sha256sum, pm install, rm; the model installs from the pushed bytes.
         val h2 = Harness(this, ScriptedTv(Samples.snapshot(facts = Samples.miTvFacts().copy(adbFeatures = setOf("shell_v2")), packages = Samples.miTvPackages(emptySet()))))
         val e2 = h2.engine()
-        val plan = h2.setupPlan(takeover = false)
+        val apk = tv.cleanyour.core.model.RemotePath(tv.cleanyour.core.model.RemoteDir.TMP, listOf(h2.apkSha.hex.take(40) + ".apk"))
+        val plan = h2.opsPlan(Op.Mkdir(tv.cleanyour.core.model.RemoteDir.TMP), Op.PushAsset(h2.artifact.blob, apk, h2.apkSha),
+            Op.Install(apk, h2.apkSha, h2.launcher.pkg, 1, h2.signer, emptySet()), Op.RemoveFile(apk))
         assertTrue(plan.steps.any { it.op is Op.Install })
         e2.start(plan, h2.tv, plan.hash, h2.pass())
         h2.settle(e2)

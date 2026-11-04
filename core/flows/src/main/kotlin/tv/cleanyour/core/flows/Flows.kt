@@ -39,11 +39,11 @@ sealed interface SetupState {
     data class Probing(val tvId: TvId, val stage: ProbeStage, val partial: PlanSummary?) : SetupState
     data class Found(val tvId: TvId, val plan: Plan, val level: Level, val sheet: Sheet?) : SetupState
     data class Working(val tvId: TvId, val run: RunState.Running, val thumbnail: ByteArray?) : SetupState
-    data class Check(val tvId: TvId, val run: RunState.AwaitingConfirm, val thumbnail: ByteArray?, val dockNames: List<String>) : SetupState
+    data class Check(val tvId: TvId, val run: RunState.AwaitingConfirm, val thumbnail: ByteArray?) : SetupState
     data class Stopped(val tvId: TvId, val card: StopCard) : SetupState
     data class Done(val tvId: TvId, val summary: DoneSummary, val restartState: RestartState?) : SetupState }
 enum class DoorPhase { STEPS, CONNECTING, ALLOW, IDENTITY, CONNECTED }
-enum class Sheet { LIST, CUSTOMISE, DOCK, THEME, ADDRESS }
+enum class Sheet { LIST, CUSTOMISE, ADDRESS }
 // R0: 2 were referenced and never declared; W8 may add fields, never remove
 enum class StopCase { HOME_SETUPWRAITH, HOME_OTHER_LAUNCHER, HOME_UNKNOWN, HOME_USER_SAID_NO, CONNECTION_LOST, RESUME_AFTER_DEATH, INSTALL_FAILED, TV_REFUSES_HOME, PAIRING_NEEDED, IDENTITY_CHANGED,
     // W8 additions (growable, R0: 2; DECISIONS-W8.md D-W8-3): the stops of section 4 that had no case
@@ -61,27 +61,16 @@ sealed interface RestartState { data class Restarting(val sinceMs: Long) : Resta
     data class NotBack(val afterMs: Long) : RestartState }
 sealed interface SetupIntent { data object Start : SetupIntent; data class PickTv(val host: String) : SetupIntent; data class EnterAddress(val ip: String) : SetupIntent
     data class ChangeFamily(val family: String) : SetupIntent; data object AskTvAgain : SetupIntent; data object ConfirmIdentity : SetupIntent
-    data class Keep(val pkg: PackageName, val keep: Boolean) : SetupIntent; data class SetDock(val dock: List<PackageName>) : SetupIntent
-    data class SetTheme(val id: String) : SetupIntent; data class KeepDebuggingOn(val on: Boolean) : SetupIntent; data class Open(val sheet: Sheet?) : SetupIntent
+    data class Keep(val pkg: PackageName, val keep: Boolean) : SetupIntent
+    data class KeepDebuggingOn(val on: Boolean) : SetupIntent; data class Open(val sheet: Sheet?) : SetupIntent
     data object MakeItClean : SetupIntent; data class CredentialPassed(val pass: GatePass) : SetupIntent; data object CredentialFailed : SetupIntent   // R0: 6
     data object StopAndUndo : SetupIntent; data object YesISeeIt : SetupIntent; data object NoPutItBack : SetupIntent
     data object TryWithWizardOff : SetupIntent; data object LeaveOldHome : SetupIntent; data object CarryOn : SetupIntent; data object UndoWhatWeDid : SetupIntent
     data object Restart : SetupIntent; data object SaveRestoreNote : SetupIntent; data object AddCard : SetupIntent; data object Finish : SetupIntent
     data class StopAction(val action: tv.cleanyour.core.flows.StopAction) : SetupIntent; data object RejectIdentity : SetupIntent   // RFC-W8-1 (accepted)
-    data class ShowOnTv(val on: Boolean) : SetupIntent   // RFC-CURTAIN-1: the Customise switch "Show the progress on the TV"
-    data class HomeHelper(val on: Boolean) : SetupIntent   // RFC-HELPER-1 (test build): the Customise switch "Home button helper", on only after its consent
     // 0.4.8: Done after the restart check: "Tell us it worked" (the confirmation's preview), "Report a problem" after a
     // restart that failed (`title`: the line as shown), and "Not right? Send it again" under the TV's screenshot.
-    data object TellUsItWorked : SetupIntent; data class ReportRestartFailed(val title: String) : SetupIntent; data object SendLookAgain : SetupIntent
-    // RFC-LOOK-SETUP-1 (0.4.0): the look step has the Look sheet's choices. Apps in a row (4 to 8,
-    // anything else is ignored), the picture (HomeChoice.picture, null for the look's own), and a
-    // photo the phone just made (16:9, a JPEG of at most 280 KB) with its dim. They only change the
-    // draft; the push happens when Setup runs.
-    data class SelectColumns(val count: Int) : SetupIntent; data class SelectPicture(val id: String?) : SetupIntent
-    class SetOwnPicture(val jpeg: ByteArray, val dim: Int) : SetupIntent
-    // look2: every tap of the Look editor in the look step, the same edits as the Look sheet's
-    // (HomeScreenIntent.Look). SetTheme, SelectColumns and SelectPicture stay until ui moves.
-    data class Look(val edit: LookEdit) : SetupIntent
+    data object TellUsItWorked : SetupIntent; data class ReportRestartFailed(val title: String) : SetupIntent
     // 0.4.7 (UX finding 5, PM 7): "Done" on What we found when there is nothing to switch off and the
     // TV keeps its own home screen: Setup ends without a run.
     data object LeaveAsIs : SetupIntent }

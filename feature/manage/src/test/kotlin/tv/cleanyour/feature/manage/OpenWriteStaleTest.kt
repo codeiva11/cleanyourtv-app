@@ -28,7 +28,7 @@ class OpenWriteStaleTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private fun open(nothingDone: Boolean) =
-        OpenWrite(Samples.miTvId(), "Mi TV 4A", PlanId("01JAZ0000000000000000000"), PlanKind.THEME, PauseReason.STALE, nothingDone = nothingDone)
+        OpenWrite(Samples.miTvId(), "Mi TV 4A", PlanId("01JAZ0000000000000000000"), PlanKind.SWITCH_OFF, PauseReason.STALE, nothingDone = nothingDone)
 
     private fun absent(text: String) = check(compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isEmpty()) { "shown: $text" }
 

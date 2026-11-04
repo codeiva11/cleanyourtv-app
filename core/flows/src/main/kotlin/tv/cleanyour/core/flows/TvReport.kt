@@ -70,7 +70,7 @@ data class HomeDecision(val planned: Boolean, val block: String? = null, val alr
     // reasons (KEEPS_ITS_LINE) do not change with the app.
     fun earlier(app: String, now: ProfileResolution?): Boolean {
         val b = block ?: return false
-        if (HomeBlock.entries.firstOrNull { it.name == b } in KEEPS_ITS_LINE) return false
+        if (b in KEEPS_ITS_LINE) return false
         if (this.app == null || this.app != app) return true
         return profile != LogCodes.profile(now)
     }
@@ -79,15 +79,9 @@ data class HomeDecision(val planned: Boolean, val block: String? = null, val alr
         // The blocks that come from the TV's own facts or the person's choice: an app update does not
         // change them, so an earlier Setup's decision keeps its line and next step.
         // beta4: VENDOR_HOME, a system service's FallbackHome on the TV.
-        val KEEPS_ITS_LINE: Set<HomeBlock> = setOf(HomeBlock.TV_REFUSES, HomeBlock.OLD_ANDROID, HomeBlock.BOOT_LOOP, HomeBlock.CASTING,
-            HomeBlock.REMOTE_BUTTONS, HomeBlock.HOME_CHANGED, HomeBlock.VENDOR_HOME)
+        val KEEPS_ITS_LINE: Set<String> = setOf("TV_REFUSES", "OLD_ANDROID", "BOOT_LOOP", "CASTING",
+            "REMOTE_BUTTONS", "HOME_CHANGED", "VENDOR_HOME")
 
-        fun of(block: HomeBlock, planHasSwitch: Boolean, alreadyOn: Boolean, app: String? = null, profile: String? = null, redirect: Boolean = false): HomeDecision = when {
-            redirect -> HomeDecision(false, app = app, profile = profile, redirect = true)
-            block != HomeBlock.NONE -> HomeDecision(false, block.name, app = app, profile = profile)
-            planHasSwitch -> HomeDecision(true, app = app, profile = profile)
-            else -> HomeDecision(false, alreadyOn = alreadyOn, app = app, profile = profile)
-        }
     }
 }
 
@@ -118,7 +112,7 @@ class HomeDecisions(private val store: DocumentStore) {
         val decision = when {
             v == null -> null
             v == "planned" -> HomeDecision(true)
-            v.startsWith("blocked:") -> v.removePrefix("blocked:").takeIf { b -> HomeBlock.entries.any { it.name == b } }?.let { HomeDecision(false, it) }
+            v.startsWith("blocked:") -> v.removePrefix("blocked:").takeIf { it.isNotBlank() }?.let { HomeDecision(false, it) }
             v == "on" -> HomeDecision(false, alreadyOn = true)
             v == "redirect" -> HomeDecision(false, redirect = true)
             v == "none" -> HomeDecision(false)
@@ -140,8 +134,6 @@ data class TvReportInput(
     // 0.4.7: Manage's last connect found the TV's own home screen, which this app switched off, claiming Home again
     // (StockHomeBack: XGIMI's remote buttons switch launcherx back on).
     val stockHomeBack: Boolean = false,
-    // RFC-HELPER-1 (test build): the Accessibility section (PLAN 4.7); off in a release build.
-    val accessibility: Boolean = tv.cleanyour.core.planner.HomeHelper.BUILD_ON,
     // 0.4.8: what this phone counted across the TV's restarts (Restarts), for every report of a TV it switched.
     val restarts: RestartFacts? = null,
 )
@@ -216,35 +208,6 @@ object TvReport {
         }
     }
 
-    // RFC-HELPER-1 (PLAN 4.7): what the TV says about the Home button helper, from the snapshot's two
-    // settings and the overlay. Other services are only counted, never named, as the person's apps.
-    // Bound or not is not read (no dumpsys accessibility): "listed" and "Switched on" stand for it.
-    private fun StringBuilder.appendAccessibility(s: Snapshot) {
-        val list = tv.cleanyour.core.planner.HomeHelper.list(s)
-        val listed = tv.cleanyour.core.ops.HelperLines.listed(list)
-        val entries = tv.cleanyour.core.ops.HelperLines.entries(list)
-        val others = tv.cleanyour.core.ops.HelperLines.others(list).size
-        val doc = s.launcherOverlay?.let { (tv.cleanyour.core.spec.LauncherConfigCodec.decode(it) as? tv.cleanyour.core.spec.DecodeResult.Ok)?.doc }
-        val redirect = doc?.let { tv.cleanyour.core.spec.HomeHelperKeys.redirectOf(it) }
-        val keyFilter = doc?.let { tv.cleanyour.core.spec.HomeHelperKeys.keyFilterOf(it) }
-        val on = s.settings[tv.cleanyour.core.model.SettingKey.ACCESSIBILITY_ENABLED]
-        appendLine()
-        appendLine("Accessibility")
-        appendLine("Switched on: ${when (on) { "1" -> "yes"; "0" -> "no"; else -> "unknown" }}")
-        appendLine("Services listed: " + when {
-            entries.isEmpty() -> "none"
-            listed -> "${entries.size} (the new home screen's Home button helper, $others other, not named)"
-            else -> "${entries.size} (not named)"
-        })
-        appendLine("Home button helper: " + when {
-            listed && on == "1" -> "listed, accessibility on"
-            listed -> "listed, accessibility off"
-            else -> "not listed"
-        })
-        appendLine("Home redirect: ${redirect?.value ?: "none"}")
-        appendLine("Key filter: ${when (keyFilter) { false -> "off"; true -> "on"; null -> "the launcher's default" }}")
-        appendLine("Button map: ${doc?.appKeys?.size?.takeIf { it > 0 }?.let { "$it buttons" } ?: "none"}")
-    }
 
     // 0.4.8: the restart count (Restarts), the same lines in a problem report as in the confirmation (ItWorked). The
     // issue bot reads "Held:" and "Failed:" (research/release-0.4.8/CONFIRMATION-FORMAT.md); dates are UTC days.
@@ -260,7 +223,7 @@ object TvReport {
         appendLine("Last counted: ${t.lastAtMs?.let { DAY.format(Instant.ofEpochMilli(it)) } ?: "none"}")
         appendLine("Counted by: ${t.build?.let { own(it) } ?: "none"}")
         appendLine("Look route: ${r.lookRoute}")
-        appendLine("Checked: ${if (r.path == HomePath.HELPER) "boot_id and Home only (the helper's service is not read)" else "boot_id and Home only"}")
+        appendLine("Checked: boot_id and Home only")
     }
 
     // 0.4.8 (PLAN item 2): "Tell us it worked", the confirmation the issue bot counts. A fixed block of the app, the
@@ -330,12 +293,6 @@ object TvReport {
         if (claimants.isEmpty()) appendLine("Claimants: none")
         for (c in claimants) appendLine("Claimant: ${named(s, c.component)} priority ${c.priority}")
         if (input.stockHomeBack) appendLine("Since then: the TV's own home screen, switched off by this app, is on again and claims Home")
-        // Only when the probe read either setting or the overlay names a redirect: a report from a
-        // snapshot that knows nothing about accessibility stays as it was.
-        if (input.accessibility && (tv.cleanyour.core.model.SettingKey.ENABLED_ACCESSIBILITY in s.settings ||
-                tv.cleanyour.core.model.SettingKey.ACCESSIBILITY_ENABLED in s.settings || tv.cleanyour.core.spec.HomeHelperKeys.redirectOf(s.launcherOverlay) != null)) {
-            appendAccessibility(s)
-        }
         input.restarts?.let { appendRestarts(it) }
         val system = s.packages.filter { it.value.system }.toSortedMap(compareBy { it.value })
         val others = s.packages.size - system.size

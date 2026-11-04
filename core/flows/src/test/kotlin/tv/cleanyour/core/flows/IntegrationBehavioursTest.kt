@@ -11,7 +11,6 @@ import tv.cleanyour.core.model.AdbError
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.store.SnapshotStore
-import tv.cleanyour.testing.fixtures.FakeLauncherPin
 import tv.cleanyour.testing.fixtures.FakeRestoreNote
 import tv.cleanyour.testing.fixtures.FakeTvRestoreFiles
 import tv.cleanyour.testing.fixtures.FakeTvSession
@@ -47,9 +46,9 @@ class IntegrationBehavioursTest {
         val sessionEnd = SessionEnd(h.sessions, h.discovery, h.tvs, runner, h.foreground)
         return SetupDeps(
             h.discovery, h.sessions, h.prober, h.profiles, h.facts, runner, h.engine, h.gate, h.tvs, snapshots, h.ledger,
-            FakeLauncherPin(Samples.launcherArtifact()), h.themes, RestorePointWriter(FakeTvRestoreFiles(), h.blobs, h.ledger, runner),
-            FakeRestoreNote(), sessionEnd, h.access, h.clock, KeyCopy, blobs = h.blobs,
-            dock = DockPicker { _, _, _, _, _ -> listOf(PackageName("com.netflix.ninja")) }, screenLock = { true }, diagnostics = { "d" },
+            RestorePointWriter(FakeTvRestoreFiles(), h.blobs, h.ledger, runner),
+            FakeRestoreNote(), sessionEnd, h.access, h.clock, KeyCopy,
+            screenLock = { true }, diagnostics = { "d" },
         )
     }
 

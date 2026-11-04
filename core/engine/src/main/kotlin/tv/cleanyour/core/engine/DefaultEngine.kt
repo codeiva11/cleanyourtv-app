@@ -266,9 +266,9 @@ class DefaultEngine(
                 if (!openSection(run, section)) { finishWithSkips(run, HomeOutcome.VERIFY_FAILED, i); return }
             }
             val section = plan.sections.firstOrNull { it.name in run.openSections && i in it.from..it.to }
-            // A new group forces a fresh thumbnail. Silent steps (RFC-CURTAIN-1: the curtain's start
-            // and cues, woven between the switch-offs) never force one and do not end a group: the
-            // group of a voiced step is compared with the last voiced step's (RF-CURTAIN-1 F1).
+            // A new group forces a fresh thumbnail. Silent steps (a blank narration) never force
+            // one and do not end a group: the group of a voiced step is compared with the last
+            // voiced step's.
             val voiced = step.narration.isNotBlank()
             val lastVoiced = plan.steps.subList(0, i).lastOrNull { it.narration.isNotBlank() }
             if (i == 0 || (voiced && lastVoiced?.group != step.group)) thumbnail(run, force = true) else thumbnail(run, force = false)
@@ -286,8 +286,8 @@ class DefaultEngine(
                     }
                     when {
                         // RF-LAUNCHER-250 F1, F2: a package kept because it runs the TV's inputs is a
-                        // skip whatever the step's policy, inside the takeover too: the section goes on
-                        // with the TV's own home screen left enabled (SetHome still makes ours the default).
+                        // skip whatever the step's policy: the run goes on with the TV's own home screen
+                        // left enabled.
                         outcome is Outcome.Refused && outcome.kept -> {
                             run.skipped += step; run.states[i] = NarrationState.SKIPPED; run.at = i + 1
                         }
@@ -651,16 +651,14 @@ class DefaultEngine(
 
     // The switch-off rule at run time, the one the planner applied (SwitchOffRule, issue #10), with the
     // live facts: the package's dump read just above and the run's PRE_PLAN snapshot. The TV's
-    // current HOME and every HOME claimant, the stock launchers and the setup wizard are switched off
-    // only inside the open guarded section (R1 R-13: a plan made before HOME changed cannot reach
-    // them; the staleness check covers SetHome priors, not a HOME change behind a debloat plan).
+    // current HOME and every HOME claimant, the stock launchers and the setup wizard are never
+    // switched off (stock-only build: no plan opens a guarded section anymore; a stored plan from
+    // before the switch still carries its section, and its rollback is what puts HOME back).
     // Fire OS's own home screens (issue #2) and a home screen app the person installed (issue #8)
-    // never go off, inside a section too, whatever an older plan file says. Upstream #421 (launcher
-    // v2.5.0's tools/disable.sh): a package that asks for TV_INPUT_HARDWARE is the layer under the
-    // HDMI, AV and tuner inputs, so it stays on, inside the takeover too (RF-LAUNCHER-250 F2).
+    // never go off, whatever an older plan file says. Upstream #421: a package that asks for
+    // TV_INPUT_HARDWARE is the layer under the HDMI, AV and tuner inputs, so it stays on.
     private fun switchOffReason(run: Run, step: Step, target: PackageName, live: PackageState?, dump: String): String? {
-        val inSection = run.plan.sections.any { it.name in run.openSections && step.index in it.from..it.to }
-        return SwitchOffRule.reason(target, live, run.profile, run.snapshot, run.stockLaunchers, inHomeSwitch = inSection,
+        return SwitchOffRule.reason(target, live, run.profile, run.snapshot, run.stockLaunchers,
             requestsTvInputHardware = PackageDump.requestsTvInputHardware(dump))
     }
 
@@ -675,8 +673,7 @@ class DefaultEngine(
     // as "the TV stopped answering", and Carry on met the same install again, for good. With the
     // session still connected it is the install's own failure: the installed APK is checked (the
     // stream may have finished before the error), Done when it hashes to the streamed one, else
-    // Failed, and the step's policy decides (the launcher's and the curtain's installs CONTINUE, so
-    // the clean-up goes on and the home screen switch is skipped, never opened without its launcher).
+    // Failed, and the step's policy decides (a module install's CONTINUE, so the clean-up goes on).
     private suspend fun streamFailed(run: Run, op: Op.InstallStream, error: AdbError): Outcome = try {
         when (installedApkCheck(run.session, op)) {
             Outcome.Ok -> Outcome.Ok
@@ -726,8 +723,8 @@ class DefaultEngine(
             }
             else -> {}
         }
-        // RFC-THEME-1: a push goes first, so a line can use the file it put there (the launcher provider's write
-        // reads its staged copy); a pull goes after the lines that made its file (the screenshot).
+        // A push goes first, so a line can use the file it put there; a pull goes after the lines
+        // that made its file (the screenshot).
         (rendered.transfer as? Transfer.Push)?.let { t -> session.push(t.src, t.dest) }
         for (line in rendered.lines) {
             val r = send(session, line, ExecSpec(timeoutMs = rendered.timeoutMs, stdoutCap = rendered.stdoutCap, retry = RetryClass.NEVER))
@@ -850,10 +847,10 @@ class DefaultEngine(
     }
 
     // QA of 0.4.5 (the home check timed out and the old home screen was put back): the run ended
-    // there and skipped every step after it, the TV curtain's removal (the plan's last step) too, so
-    // the curtain stayed installed and running on the TV. Its removal still runs when the rest is
-    // skipped. Like every curtain step it can never stop the run: a refusal or a lost connection
-    // only leaves it skipped.
+    // there and skipped every step after it, an old plan's curtain removal (the plan's last step)
+    // too, so the curtain stayed installed and running on the TV. Its removal still runs when the
+    // rest is skipped, so a stored plan never leaves one behind. Like every curtain step it can
+    // never stop the run: a refusal or a lost connection only leaves it skipped.
     private suspend fun removeCurtain(run: Run, from: Int) {
         for (i in from until run.plan.steps.size) {
             val step = run.plan.steps[i]
@@ -869,7 +866,7 @@ class DefaultEngine(
         }
     }
 
-    // A curtain step of this run was done (its install or its start) and its removal was not.
+    // An old plan's curtain step was done (its install or its start) and its removal was not.
     private fun curtainLeft(run: Run): Boolean {
         val steps = run.plan.steps.filter { it.group == DefaultPlanner.GROUP_CURTAIN }
         val removal = steps.lastOrNull { it.op is Op.Uninstall } ?: return false
@@ -890,9 +887,8 @@ class DefaultEngine(
         flow(run.plan.tvId).value = RunState.Paused(run.plan, run.at, reason, error)
     }
 
-    // RFC-CURTAIN-1: a step with a blank narration (the TV curtain's start and cues) is silent: not
-    // listed on the Working screen and not counted in the percent. The journal, resume and Show
-    // commands still see every step.
+    // A step with a blank narration is silent: not listed on the Working screen and not counted
+    // in the percent. The journal, resume and Show commands still see every step.
     private fun publishRunning(run: Run, step: Int) {
         val voiced = run.plan.steps.filter { it.narration.isNotBlank() }
         val lines = listOf(NarrationLine("Restore point saved", run.restorePoint)) +
@@ -996,7 +992,7 @@ class DefaultEngine(
         if (flow(tvId).value !is RunState.Paused) return
         val open = run.plan.sections.firstOrNull { it.name in run.openSections }
         val restore = unfinishedAccessibilityRestore(run)
-        // QA of 0.4.5: "Stop here" left the TV curtain this run installed running on the TV. Its
+        // QA of 0.4.5: "Stop here" left an old plan's curtain installed running on the TV. Its
         // removal (the plan's own curtain step, nothing else) runs before the run is given up, when
         // the TV is there; without the TV the run ends as before, and Leftovers removes it later.
         val curtain = curtainLeft(run) && run.session.state.value is ConnectionState.Connected
@@ -1217,7 +1213,7 @@ internal object JournalStepR {
         val guarded = GuardedSection(section.name, arm.i, inside.maxOf { it.i }, section.token, 0L, expected, emptySet(), rollback)
         return Plan(
             id = start.planId, tvId = tvId, kind = PlanKind.SETUP, baseSnapshot = start.base, steps = emptyList(),
-            sections = listOf(guarded), summary = PlanSummary(emptyList(), emptyList(), emptyList(), false, false),
+            sections = listOf(guarded), summary = PlanSummary(emptyList(), emptyList()),
             hash = start.hash, createdAtMs = start.atMs, appVersion = start.app,
         )
     }
@@ -1259,7 +1255,7 @@ private fun helperStepR(inside: List<JournalRecord.Begin>, section: JournalRecor
     val guarded = GuardedSection(section.name, arm.i, inside.maxOf { it.i }, section.token, 0L, Component(service.pkg, ".MainActivity"), emptySet(), rollback)
     return Plan(
         id = start.planId, tvId = tvId, kind = PlanKind.SETUP, baseSnapshot = start.base, steps = emptyList(),
-        sections = listOf(guarded), summary = PlanSummary(emptyList(), emptyList(), emptyList(), false, false),
+        sections = listOf(guarded), summary = PlanSummary(emptyList(), emptyList()),
         hash = start.hash, createdAtMs = start.atMs, appVersion = start.app,
     )
 }

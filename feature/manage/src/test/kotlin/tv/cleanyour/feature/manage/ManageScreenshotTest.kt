@@ -63,13 +63,12 @@ private fun fakeShot(): ByteArray {
 private const val NOW = Samples.NOW_MS
 private const val FINGERPRINT = "3A:91:0C:7E:55:12:9B:44:E0:21:6D:88:F3:0A:BC:42"
 private val tvId = Samples.miTvId()
-private val dockNames = listOf("Netflix", "YouTube", "Prime Video", "Live TV")
 private val shotPng by lazy { fakeShot() }
 
 private fun card(
     clean: Boolean = true, level: Level = Level.SIMPLE, chip: ChipState = ChipState.CONNECTED, thumbnail: Boolean = true,
     switchedOff: Int = 23, room: String? = "Living room", restorePointAtMs: Long? = NOW, debugging: DebugState = DebugState.ON,
-) = TvCard(tvId, "Mi TV 4A", room, clean, NOW, level, chip, if (thumbnail) shotPng else null, switchedOff, dockNames, restorePointAtMs, debugging)
+) = TvCard(tvId, "Mi TV 4A", room, clean, NOW, level, chip, if (thumbnail) shotPng else null, switchedOff, restorePointAtMs, debugging)
 
 private fun manage(card: TvCard = card(), offline: Boolean = false, reconnecting: Boolean = false, others: List<TvCard> = emptyList()) =
     ManageState(cards = listOf(card) + others, selected = tvId, offline = offline, reconnecting = reconnecting, loading = false)
@@ -103,7 +102,6 @@ private fun switchedOff(level: Level = Level.SIMPLE, groups: List<OffGroup> = of
 
 private fun appSettings(update: UpdateCheck = UpdateCheck.Idle, backing: String = "STRONGBOX") = AppSettingsState(
     version = "0.1.0", prefs = AppPrefsValue(haptics = true, largeTextFollowsSystem = true),
-    launcherPkg = "com.gathin.tvhome", launcherVersion = "0.1.0", launcherDigest = "9f2c41d07a6be8135c4d0e72ab19f5c3",
     keyBacking = backing, keyFingerprint = "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:7F:2A", update = update,
 )
 
@@ -243,10 +241,8 @@ object ManageShots {
         // 0.3.2 B1: a TV no profile knows invites the person to help add it.
         Shot("manage_help_add_tv", tall) { ManageScreen(manage(card().copy(helpAddTv = true)), {}) },
         // 0.3.3 D2 (issue #3): the new home screen isn't on this TV; the Home screen row says so.
-        Shot("manage_own_home", tall) { ManageScreen(manage(card().copy(helpAddTv = true, ownHome = true, dockNames = emptyList())), {}) },
-        // 0.4.7 (UX finding 8): the new home screen installed but not in use; (must 4) the report sent before.
-        Shot("manage_home_not_in_use", tall) { ManageScreen(manage(card().copy(homeInstalledNotInUse = true, dockNames = emptyList())), {}) },
-        Shot("manage_report_sent", tall) { ManageScreen(manage(card().copy(helpAddTv = true, ownHome = true, dockNames = emptyList(), reportSentAtMs = NOW - 86_400_000)), {}) },
+        Shot("manage_own_home", tall) { ManageScreen(manage(card().copy(helpAddTv = true, ownHome = true)), {}) },
+        Shot("manage_report_sent", tall) { ManageScreen(manage(card().copy(helpAddTv = true, ownHome = true, reportSentAtMs = NOW - 86_400_000)), {}) },
         // WP4 (C6): one line for the apps the list for this TV now keeps on.
         Shot("manage_better_back_on", tall) { ManageScreen(manage(card().copy(betterBackOn = 2)), {}) },
         // 0.4.6: a setup wizard claims Home under the new home screen; the way back, and while it runs.
@@ -254,8 +250,6 @@ object ManageShots {
         Shot("manage_wizard_home_working", tall) { ManageScreen(manage(card().copy(wizardHome = true)).copy(switchingHome = true), {}) },
         // 0.4.7 (StockHomeBack): the TV turned its own home screen back on (XGIMI's remote buttons); Run Setup again leads.
         Shot("manage_stock_home_back", tall) { ManageScreen(manage(card().copy(stockHomeBack = true)), {}) },
-        // RFC-HELPER-1 (test build): the Home button helper is on; the Home screen row says so.
-        Shot("manage_home_helper", tall) { ManageScreen(manage(card().copy(homeHelperOn = true)), {}) },
         // 0.4.8 (Restarts): held through restarts, with "Tell us it worked"; told already; a restart that failed.
         Shot("manage_restarts_held", tall) { ManageScreen(manage(card().copy(restarts = held(3))), {}) },
         Shot("manage_restarts_told", tall) { ManageScreen(manage(card().copy(restarts = held(1, told = NOW))), {}) },
@@ -307,10 +301,8 @@ object ManageShots {
         Shot("openwrite_busy") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(busy = true), {}, {}, {}) } },
         Shot("openwrite_not_taken") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(notTaken = true), {}, {}, {}) } },
         // QA of 0.4.5: the TV changed after we read it (STALE): before any step, and partway through.
-        Shot("openwrite_stale_nothing_done") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(kind = PlanKind.THEME, reason = PauseReason.STALE, nothingDone = true), {}, {}, {}) } },
-        Shot("openwrite_stale_partway") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(kind = PlanKind.THEME, reason = PauseReason.STALE), {}, {}, {}) } },
-        // 0.4.7 (UX finding 19): a look send that paused: "Your look didn't reach the TV", Send it again, Undo.
-        Shot("openwrite_look_failed") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(kind = PlanKind.THEME, reason = PauseReason.STEP_FAILED), {}, {}, {}) } },
+        Shot("openwrite_stale_nothing_done") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(reason = PauseReason.STALE, nothingDone = true), {}, {}, {}) } },
+        Shot("openwrite_stale_partway") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(reason = PauseReason.STALE), {}, {}, {}) } },
         // 0.4.6: the app a put back switched on took the Home button.
         Shot("openwrite_took_home") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(kind = PlanKind.PUT_BACK, reason = PauseReason.STEP_FAILED, tookHome = "Android TV Home"), {}, {}, {}) } },
         Shot("openwrite_setup") { SheetOver({ ManageScreen(manage(), {}) }) { OpenWriteContent(openWrite(kind = PlanKind.SETUP), {}, {}, {}) } },

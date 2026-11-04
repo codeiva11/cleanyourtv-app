@@ -19,9 +19,7 @@ import tv.cleanyour.core.model.LauncherState
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.RemoteDir
 import tv.cleanyour.core.model.RemotePath
-import tv.cleanyour.core.model.SettingKey
 import tv.cleanyour.core.planner.PlanKind
-import tv.cleanyour.core.store.SnapshotCodec
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
 import tv.cleanyour.testing.fixtures.FakeTvSession
@@ -75,16 +73,6 @@ class RestartCountTest {
         assertEquals(listOf<Any?>(RestartRead.HELD, 1, 1, false), listOf(held.read, held.tally.held, held.tally.failed, held.tally.lastFailed))
     }
 
-    @Test fun anotherPathStartsANewCount() = runTest(timeout = 30.seconds) {
-        val r = Restarts(MemoryDocumentStore())
-        val id = Samples.miTvId()
-        r.observe(id, "boot-1", theirs, HomePath.HELPER, build, 1_000)
-        assertEquals(1, r.observe(id, "boot-2", theirs, HomePath.HELPER, build, 2_000).tally.held)
-        val switched = r.observe(id, "boot-2", ours, HomePath.LIST, build, 3_000)
-        assertEquals(RestartRead.FIRST, switched.read)
-        assertEquals(listOf<Any?>(0, 0, HomePath.LIST), listOf(switched.tally.held, switched.tally.failed, switched.tally.path))
-    }
-
     // The path: a TV this app never switched has none, so Manage reads nothing more there.
     @Test fun thePathFollowsWhatThisAppPutOnTheTv() {
         val tv = Samples.tv()
@@ -93,13 +81,7 @@ class RestartCountTest {
         assertEquals(HomePath.LIST, HomePath.of(tv.copy(launcher = launcher), snap, HomeDecision(true, profile = "exact xiaomi-mitv-axso0")))
         assertEquals(HomePath.R0, HomePath.of(tv.copy(launcher = launcher, profileId = null), snap, HomeDecision(true, profile = "brand set Xiaomi")))
         assertEquals(HomePath.LIST, HomePath.of(tv.copy(launcher = launcher, profileId = null), snap, HomeDecision(true, profile = "candidate tcl-x")))
-        val helper = snap.copy(settings = mapOf(SettingKey.ENABLED_ACCESSIBILITY to "com.gathin.tvhome/.HomeKeyService", SettingKey.ACCESSIBILITY_ENABLED to "1"))
-        assertEquals(HomePath.HELPER, HomePath.of(tv, helper, null), "our service listed")
-        assertEquals(HomePath.HELPER, HomePath.of(tv.copy(launcher = launcher), snap, HomeDecision(false, redirect = true)), "a read from before the helper")
         assertNull(HomePath.of(tv.copy(launcher = null), snap, HomeDecision(false, redirect = true)), "the TV's own home screen chosen")
-        // The helper: Home answers to the Google home screen it sends on from, with ours still a claimant.
-        assertTrue(Restarts.answers(HomePath.HELPER, theirs))
-        assertFalse(Restarts.answers(HomePath.HELPER, HomeResolution(stock, listOf(HomeClaimant(stock, 2)))), "ours gone")
         assertFalse(Restarts.answers(HomePath.LIST, theirs))
     }
 
@@ -169,22 +151,6 @@ class RestartCountTest {
         assertNull(Restarts(h.documents).load(tv.id))
     }
 
-    @Test fun theHelperPathCountsWhileHomeAnswersToTheTvsOwn() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val tv = h.knownTv().copy(launcher = launcher)
-        h.tvs.upsert(tv)
-        h.snapshots.save(Samples.miTvSnapshot().copy(takenAtMs = Samples.NOW_MS + 1,
-            settings = mapOf(SettingKey.ENABLED_ACCESSIBILITY to "com.gathin.tvhome/.HomeKeyService", SettingKey.ACCESSIBILITY_ENABLED to "1"))
-            .let { it.copy(contentHash = SnapshotCodec.hash(it)) })
-        h.prober.home = theirs
-        val m = ManageMachine(h.manageDeps(homeHelper = true), backgroundScope, tv.id)
-        settle()
-        h.prober.bootIdValue = "boot-2"
-        m.dispatch(ManageIntent.Select(tv.id)); settle()
-        val r = assertNotNull(m.state.value.current?.restarts)
-        assertEquals(listOf<Any?>(HomePath.HELPER, 1, 0), listOf(r.path, r.held, r.failed))
-    }
-
     // PLAN item 2: the block the issue bot reads, with the title, in a link far under the cap, and nothing the
     // problem report leaves out.
     @Test fun theConfirmationIsTheFixedBlockInItsForm() = runTest(timeout = 30.seconds) {
@@ -192,7 +158,7 @@ class RestartCountTest {
         val tv = h.switchedTv()
         val config = RemotePath(RemoteDir.OVERLAY, listOf("config.json"))
         val plan = h.plan(listOf(Op.PushAsset(BlobRef(Samples.zeroHash, 10, "blob:config"), config, Samples.zeroHash, FileRoute.THEME_PROVIDER)),
-            kind = PlanKind.THEME, id = "01FAKERUN0000000000000020")
+            kind = PlanKind.SETUP, id = "01FAKERUN0000000000000020")
         h.ledger.record(plan)
         h.journal.append(JournalRecord.PlanStart(plan.id, tv.id, Samples.zeroHash, 1, plan.hash, "0.1.0", 0))
         h.journal.append(JournalRecord.Begin(plan.id, 0, plan.steps[0].op, listOf("fake"), null, 10))
@@ -408,41 +374,6 @@ class RestartCountTest {
         m.dispatch(SetupIntent.Restart); settle()
         assertNull(m.extras.value.restarts)
         assertTrue("bootId" !in h.prober.calls)
-    }
-
-    @Test fun doneShowsTheTvAfterTheLookWentToIt() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        h.sessions.allowPromptFor[HOST] = "AB:CD:7F:2A"
-        val config = RemotePath(RemoteDir.OVERLAY, listOf("config.json"))
-        h.planner.respond = { request, _ ->
-            when (request) {
-                is PlanRequest.Setup -> PlanResult.Ok(h.plan(listOfNotNull(Op.Disable(adPkg), request.config?.let { Op.PushAsset(it, config, it.sha256) }), takeover = true))
-                else -> PlanResult.Ok(h.plan(emptyList(), kind = PlanKind.WRITE_RESTORE_POINT, id = "01FAKEKIND0000000000000099"))
-            }
-        }
-        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
-        h.prober.screenshotPng = png
-        val m = h.setup(backgroundScope)
-        h.discovery.emit(DiscoveryEvent.Found(miTvFound)); settle()
-        m.dispatch(SetupIntent.Start); settle()
-        h.discovery.open5555[HOST] = true
-        settle(2_100); settle(700)
-        h.engine.onStart = { p ->
-            val i = p.steps.indexOfFirst { it.op is Op.PushAsset }
-            if (i >= 0) {
-                h.journal.append(JournalRecord.Begin(p.id, i, p.steps[i].op, listOf("fake"), null, 1))
-                h.journal.append(JournalRecord.Done(p.id, i, 0, true, 5))
-            }
-            finish(p, RunStatus.COMPLETED, if (p.kind == PlanKind.SETUP) HomeOutcome.CONFIRMED else null)
-        }
-        m.dispatch(SetupIntent.MakeItClean); settle()
-        assertIs<SetupState.Done>(m.state.value)
-        kotlin.test.assertContentEquals(png, m.extras.value.doneShot)
-        val id = assertIs<SetupState.Done>(m.state.value).tvId
-        m.effects.test {
-            m.dispatch(SetupIntent.SendLookAgain); settle()
-            assertEquals(listOf(SetupEffect.Navigate("home/${id.value}/again")), drain().filterIsInstance<SetupEffect.Navigate>())
-        }
     }
 
     @Test fun theSessionCallsOfTheCountAreReadsOnly() = runTest(timeout = 30.seconds) {

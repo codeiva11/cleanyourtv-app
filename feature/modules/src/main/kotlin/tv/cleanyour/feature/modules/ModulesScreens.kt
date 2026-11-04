@@ -26,7 +26,6 @@ import tv.cleanyour.core.flows.CardAnswer
 import tv.cleanyour.core.flows.IndexView
 import tv.cleanyour.core.flows.InstallStep
 import tv.cleanyour.core.flows.ModuleDetail
-import tv.cleanyour.core.flows.ModuleRow
 import tv.cleanyour.core.flows.ModulesIntent
 import tv.cleanyour.core.flows.ModulesState
 import tv.cleanyour.core.flows.UpdateConsent
@@ -146,8 +145,6 @@ internal fun InstalledScreen(state: ModulesState, onIntent: (ModulesIntent) -> U
         if (state.installed.isEmpty()) {
             Lead(stringResource(R.string.modules_empty), Modifier.padding(top = 12.dp))
         } else {
-            // RFC-CARDS-1: the TV's cards are off until the person shows one.
-            if (state.cardsOff) Lead(stringResource(R.string.modules_cards_off_note), Modifier.padding(top = 12.dp))
             ListGroup(Modifier.padding(top = 20.dp)) {
                 state.installed.forEachIndexed { i, m ->
                     if (i > 0) ListDivider()
@@ -162,11 +159,6 @@ internal fun InstalledScreen(state: ModulesState, onIntent: (ModulesIntent) -> U
                     // The row's actions sit under it, so a long name and two actions never squeeze at 200% font.
                     FlowRow(Modifier.padding(start = 62.dp, end = 8.dp, bottom = 4.dp), verticalArrangement = Arrangement.Center) {
                         if (m.updateTo != null) TertiaryButton(stringResource(R.string.modules_update), { onIntent(ModulesIntent.Update(m.id)) })
-                        if (state.cardsOff) {
-                            if (state.showing == m.id) Row(Modifier.padding(16.dp)) { Spinner() }
-                            else TertiaryButton(stringResource(R.string.modules_show_card), { onIntent(ModulesIntent.ShowCard(m.id)) },
-                                enabled = state.showing == null && state.removing == null, guardObscured = true)   // a write (O1)
-                        }
                         if (state.removing == m.id) Row(Modifier.padding(16.dp)) { Spinner() }
                         else TertiaryButton(stringResource(R.string.modules_remove), { removing = m.id }, enabled = state.removing == null && state.showing == null, quiet = true)
                     }

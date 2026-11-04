@@ -12,10 +12,8 @@ import tv.cleanyour.core.engine.RunState
 import tv.cleanyour.core.model.DebugState
 import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.TvId
-import tv.cleanyour.core.planner.HomeHelper
 import tv.cleanyour.core.planner.PutBackAdvice
 import tv.cleanyour.core.session.SessionHold
-import tv.cleanyour.core.spec.DockLayers
 
 // M1, the app's home once a TV exists (UX 4.11 case A).
 data class TvCard(
@@ -28,13 +26,12 @@ data class TvCard(
     val chip: ChipState,
     val thumbnail: ByteArray?,
     val switchedOff: Int,
-    val dockNames: List<String>,
     val restorePointAtMs: Long?,
     val debugging: DebugState,
     // 0.3.2 B1: no exact profile and a stored snapshot, so "Help add this TV" can make its report.
     val helpAddTv: Boolean = false,
-    // 0.3.3 D2: the new home screen is not on this TV (HomeScreenMachine says why), so the Home
-    // screen row says the TV keeps its own instead of naming a dock.
+    // Stock-only: the TV always keeps its own home screen, so the Home screen row says so
+    // instead of naming a dock.
     val ownHome: Boolean = false,
     // WP4 (C6): apps this phone switched off that the list for this TV now keeps on (PutBackAdvice);
     // Manage shows one line for them that opens the Switched off list.
@@ -42,18 +39,12 @@ data class TvCard(
     // 0.4.6: on this connect a setup wizard claims Home while ours is Home and the TV's own home
     // screen is off (WizardHome); Manage offers to switch the TV's own home screen back on.
     val wizardHome: Boolean = false,
-    // 0.4.7 (UX finding 8): the new home screen is on the TV but not in use (NotOnTv.installed), so
-    // the Home screen row says the TV's own is in use instead of naming a dock.
-    val homeInstalledNotInUse: Boolean = false,
     // 0.4.7: this TV's report was sent then (SentReports); the help banner says so.
     val reportSentAtMs: Long? = null,
     // 0.4.7: on this connect the TV's own home screen, which this phone switched off, claims Home again
     // (StockHomeBack: XGIMI's remote buttons switch launcherx back on).
     val stockHomeBack: Boolean = false,
-    // RFC-HELPER-1 (test build): the Home button helper is on (HomeHelper.State.ON in the latest
-    // snapshot): the TV's own home screen stays Home and the Home button opens the new one.
-    val homeHelperOn: Boolean = false,
-    // 0.4.8 (Restarts): what this phone counted across the TV's restarts, while the new home screen is on it; null
+    // 0.4.8 (Restarts): what this phone counted across the TV's restarts, while the switched home screen is on it; null
     // before the first read on a path (a TV never switched has none).
     val restarts: RestartTally? = null,
 )
@@ -71,7 +62,7 @@ data class ManageState(
 }
 
 enum class ManageSection(val key: String) {
-    HOME_SCREEN("home"), MODULES("modules"), SWITCHED_OFF("switchedoff"), LEFTOVERS("leftovers"),
+    MODULES("modules"), SWITCHED_OFF("switchedoff"), LEFTOVERS("leftovers"),
     RESTORE_POINT("restore"), TV_SETTINGS("tvsettings"),
 }
 
@@ -126,35 +117,24 @@ class ManageMachine(
                 if (tvs.isEmpty()) flowOf(emptyList()) else combine(tvs.map { d.engine.runState(it.id) }) { it.toList() }
             }
             combine(d.tvs.tvs, d.sessions.states, runs) { tvs, states, _ -> tvs to states }.collect { (tvs, states) ->
-                val pin = runCatching { d.launcherPin.bundled() }.getOrNull()
                 val cards = tvs.sortedByDescending { it.lastSeenAt }.map { tv ->
                     val run = d.engine.runState(tv.id).value
                     val offPkgs = d.ledger.switchedOffByUs(tv.id)
                     val off = offPkgs.size
-                    val home = d.homePrefs.load(tv.id)
                     val latest = d.snapshots.latest(tv.id)
-                    val ours = latest?.packages?.get(Launcher.pkg)
-                    // Our launcher with our key (or one the probe could not read), not Home, and not a
-                    // launcher under our name Setup left as it is (HOME_CHANGED): installed, not in use.
-                    val mine = ours != null && tv.launcher == null && (ours.signer == null || pin == null || ours.signer == pin.signer)
-                    val decision = if (mine) attempt { d.homeDecisions.load(tv.id) }.getOrNull() else null
-                    // RFC-HELPER-1: with our HomeKeyService listed the TV's own is Home on purpose; the new one is in use through it.
-                    val notInUse = mine && latest?.home?.resolved?.pkg != Launcher.pkg && decision?.alreadyOn != true && decision?.block == null && latest?.let { HomeHelper.listed(it) } != true
                     TvCard(
                         id = tv.id, name = tv.nickname, room = tv.room, clean = off > 0, checkedAtMs = tv.lastSeenAt, level = tv.level,
                         chip = chipFor(states[tv.id]?.takeIf { d.access.live(tv.id) != null }, run, tv.debugging),
                         thumbnail = state.value.cards.firstOrNull { it.id == tv.id }?.thumbnail,
-                        switchedOff = off, dockNames = home?.let { shownDock(it) }.orEmpty().map { d.nameOf(it) },
+                        switchedOff = off,
                         restorePointAtMs = (d.snapshots.baseline(tv.id) ?: latest)?.takenAtMs, debugging = tv.debugging,
                         helpAddTv = tv.profileId == null && latest != null,
-                        ownHome = tv.launcher == null && latest != null && Launcher.pkg !in latest.packages,
+                        ownHome = tv.launcher == null,
                         betterBackOn = if (PutBackAdvice.forProfile(tv.profileId).isEmpty()) 0
                             else PutBackAdvice.offers(tv.profileId, latest, d.ledger.changes(tv.id), d.profileOf(tv)).map { it.pkg }.distinct().count { it in offPkgs },
                         wizardHome = wizardHomes[tv.id] == true,
-                        homeInstalledNotInUse = notInUse,
                         reportSentAtMs = if (tv.profileId == null) attempt { d.sentReports.load(tv.id) }.getOrNull()?.atMs else null,
                         stockHomeBack = d.stockHomeBacks[tv.id],
-                        homeHelperOn = d.homeHelper && latest != null && HomeHelper.state(latest) == HomeHelper.State.ON,
                         restarts = attempt { d.restarts.load(tv.id) }.getOrNull()?.takeIf { it.path != null },
                     )
                 }
@@ -263,13 +243,6 @@ class ManageMachine(
             else -> effect(ManageEffect.Snackbar(SnackKind.FAILED, d.nameOf(stock.pkg), false))
         }
         checkWizardHome()
-    }
-
-    // 0.4.0: the saved dock can hold more apps than the TV shows (HomeChoice.dock), so the card names
-    // the ones the TV shows: the dock and its rows at the saved apps in a row, else the look's own.
-    private fun shownDock(home: HomeChoice): List<tv.cleanyour.core.model.PackageName> {
-        val look = home.lookOn(d.clock.today())?.let { id -> d.themes.bundled().firstOrNull { it.id == id } }
-        return DockLayers.trim(home.dock, home.columns ?: DockLayers.columnsOf(look?.doc))
     }
 
     override fun reduce(state: ManageState, event: Any): ManageState = when (event) {

@@ -3,7 +3,6 @@ package tv.cleanyour.feature.setup
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import org.junit.Rule
 import org.junit.Test
@@ -14,8 +13,6 @@ import org.robolectric.annotation.GraphicsMode
 import tv.cleanyour.core.engine.HomeOutcome
 import tv.cleanyour.core.flows.ChipState
 import tv.cleanyour.core.flows.DoneSummary
-import tv.cleanyour.core.flows.HomeBlock
-import tv.cleanyour.core.flows.RestartState
 import tv.cleanyour.core.flows.SetupActions
 import tv.cleanyour.core.flows.SetupExtras
 import tv.cleanyour.core.flows.SetupIntent
@@ -52,22 +49,6 @@ class DoneHomeKeptTest {
     @Test fun aNoSaysSo() {
         show(SetupExtras(tvName = "Mi TV 4A", chip = ChipState.CONNECTED, doneHomeKept = HomeOutcome.USER_SAID_NO))
         compose.onNodeWithText("The TV's own home screen is back: you said the new one didn't look right. To try again later, open Home screen for this TV.").performScrollTo().assertExists()
-    }
-
-    @Test fun aKeptHomeScreenLeadsWithTheOutcomeAndOffersNoCard() {
-        show(SetupExtras(tvName = "Google TV Streamer", chip = ChipState.CONNECTED, homePossible = false, homeBlock = HomeBlock.CASTING, brand = "Google"))
-        compose.onNodeWithText("Clean-up done").assertExists()
-        compose.onNodeWithText("1 thing switched off. The TV keeps its own home screen, so it will look the same. Everything can be put back.").assertExists()
-        check(compose.onAllNodesWithText("Add a card to the home screen").fetchSemanticsNodes().isEmpty()) { "Add a card is offered" }
-        compose.onNodeWithText("Why").performScrollTo().performClick()
-        compose.onNodeWithText("Why the TV keeps its own home screen").assertExists()
-    }
-
-    @Test fun afterTheRestartTheLineSaysWhoseHomeScreenItIs() {
-        val back = done.copy(restartState = RestartState.Back(72_000))
-        compose.setContent { CytTheme(reducedMotion = true) { DoneScreen(back, SetupExtras(tvName = "Mi TV 4A", chip = ChipState.CONNECTED, homePossible = false, homeBlock = HomeBlock.OLD_ANDROID), actions) } }
-        compose.onNodeWithText("Home screen is the TV's own, as before.").performScrollTo().assertExists()
-        check(compose.onAllNodesWithText("Home screen is the new one.").fetchSemanticsNodes().isEmpty()) { "the new one is claimed" }
     }
 
     @Test fun withoutATriedSwitchThereIsNoLine() {

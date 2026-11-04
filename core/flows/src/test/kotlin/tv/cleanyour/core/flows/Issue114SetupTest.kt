@@ -3,10 +3,8 @@ package tv.cleanyour.core.flows
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import tv.cleanyour.core.model.Op
-import tv.cleanyour.core.probe.SavedWifi
 import tv.cleanyour.core.spec.BundledFactsTable
 import tv.cleanyour.core.spec.BundledProfileSource
-import tv.cleanyour.testing.fixtures.FakeConfigTransport
 import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.Issue114
 import tv.cleanyour.testing.fixtures.Samples
@@ -23,7 +21,6 @@ import kotlin.time.Duration.Companion.seconds
 // with the snapshot's Home: the TCL brand set, and the switch blocked for the wizard that saved the Wi-Fi.
 @OptIn(ExperimentalCoroutinesApi::class)
 class Issue114SetupTest {
-    private val wizardOwns = SavedWifi(true, 1, setOf("${Issue114.wizard.value}:10031"))   // "setup wizard and saved Wi-Fi: wizard_owns"
     private val source = BundledProfileSource()
 
     private fun harness(): Harness {
@@ -33,12 +30,12 @@ class Issue114SetupTest {
         h.prober.snapshotFor = { r -> Issue114.snapshot(r) }
         h.profiles.resolver = { f, _ -> source.resolveNow(f) }
         h.profiles.homeResolver = { f, home -> source.resolveNow(f, home = home) }
-        val planner = tv.cleanyour.core.planner.DefaultPlanner(h.clock, FakeIdGen(), tv.cleanyour.core.ops.ShellRenderer(), FakeConfigTransport(), "0.3.7")
+        val planner = tv.cleanyour.core.planner.DefaultPlanner(h.clock, FakeIdGen(), tv.cleanyour.core.ops.ShellRenderer(), "0.3.7")
         h.planner.respond = { request, s -> planner.plan(request, s, h.facts, emptyList()) }
         return h
     }
 
-    private fun machine(h: Harness, scope: kotlinx.coroutines.CoroutineScope) = SetupMachine(h.setupDeps(savedWifi = { wizardOwns }), scope, SetupStart.Fresh)
+    private fun machine(h: Harness, scope: kotlinx.coroutines.CoroutineScope) = SetupMachine(h.setupDeps(), scope, SetupStart.Fresh)
 
     private suspend fun kotlinx.coroutines.test.TestScope.toFound(h: Harness, m: SetupMachine) {
         h.discovery.emit(tv.cleanyour.core.discovery.DiscoveryEvent.Found(miTvFound))
@@ -59,7 +56,6 @@ class Issue114SetupTest {
         val log = h.logLines.joinToString("\n")
         val found = assertIs<SetupState.Found>(m.state.value, log)
         assertTrue(h.logLines.any { it.startsWith("setup: probe done") && it.contains("profile brand set TCL, tv TCL Smart TV Pro (BeyondTV4) sdk 30") }, log)
-        assertTrue(h.logLines.any { it == "setup: home switch blocked WIZARD_WIFI" }, log)
         assertTrue(h.logLines.none { it.contains("tcl-65c725") }, log)
         val off = found.plan.steps.mapNotNull { (it.op as? Op.Disable)?.pkg }.toSet()
         assertTrue(off.isNotEmpty(), log)

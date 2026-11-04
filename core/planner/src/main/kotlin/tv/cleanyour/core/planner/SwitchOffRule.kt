@@ -26,22 +26,21 @@ import tv.cleanyour.core.spec.KnownLaunchers
 // switch off (section 3.4).
 object SwitchOffRule {
     const val REASON_YOUR_LAUNCHER = "it is a home screen app you installed, and we never switch those off"
-    // Our own new home screen, the planner's launcher package. The probe cannot tell who installed
-    // a package (installedByUs always reads false), so it is named here: never the person's.
+    // An earlier build's home screen, the planner's launcher package (kept so Undo can remove it
+    // and the engine never switches it off as if it were the person's). The probe cannot tell who
+    // installed a package (installedByUs always reads false), so it is named here.
     val OUR_LAUNCHER = PackageName("com.gathin.tvhome")
 
     // The reason `pkg` may not be switched off, or null when it may. `state` is what the caller knows
     // of the package (the engine's live dump, the planner's snapshot); `snapshot` gives HOME, the
-    // keyboard and the screensaver (null: not known, those checks are left out). `inHomeSwitch`: the
-    // switch-off is part of the open home screen switch. `requestsTvInputHardware`: the package's
-    // dump asks for TV_INPUT_HARDWARE (upstream #421).
+    // keyboard and the screensaver (null: not known, those checks are left out).
+    // `requestsTvInputHardware`: the package's dump asks for TV_INPUT_HARDWARE (upstream #421).
     fun reason(
         pkg: PackageName,
         state: PackageState?,
         profile: Profile?,
         snapshot: Snapshot?,
         stockLaunchers: List<Component>,
-        inHomeSwitch: Boolean = false,
         requestsTvInputHardware: Boolean = false,
     ): String? {
         Denylist.reason(pkg, state, profile, snapshot)?.let { return it }
@@ -49,7 +48,6 @@ object SwitchOffRule {
         if (FireOs.isHome(pkg)) return DefaultPlanner.REASON_FIRE_OS_HOME
         val stock = stockLaunchers.any { it.pkg == pkg }   // the TV's own by the allowlist, whatever its system flag reads
         if (!stock && snapshot != null && isPersonsLauncher(pkg, snapshot, state)) return REASON_YOUR_LAUNCHER
-        if (inHomeSwitch) return null
         if (stock || (snapshot != null && isHomeScreen(pkg, snapshot))) return DefaultPlanner.REASON_HOME_SCREEN
         if (pkg.value in Denylist.setupWizards || profile?.setupWraith == pkg) return DefaultPlanner.REASON_WIZARD_SECTION_ONLY
         return null

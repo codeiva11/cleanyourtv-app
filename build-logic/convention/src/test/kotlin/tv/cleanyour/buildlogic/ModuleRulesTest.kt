@@ -88,23 +88,6 @@ class ModuleRulesTest {
         assertTrue(ModuleRules.violations(g).single().contains("not listed"))
     }
 
-    // Rule 7 (RFC-CURTAIN-1): the TV curtain is reached by no main edge, reaches nothing, and has no
-    // third-party dependency in main, not even Kotlin's own; its tests may use the test libraries.
-    @Test fun tvAppIsAnIsland() {
-        val tv = clean().copy(modules = clean().modules + ModuleInfo(":tv:curtain", setOf("com.android.application")))
-        assertEquals(emptyList<String>(), ModuleRules.violations(tv.copy(externals = tv.externals + ExternalDep(":tv:curtain", "junit:junit", "testImplementation"))))
-        val into = ModuleRules.violations(tv.plus(ProjectEdge(":app", ":tv:curtain", "implementation")))
-        assertTrue(into.toString(), into.single().contains("rule 7"))
-        val out = ModuleRules.violations(tv.plus(ProjectEdge(":tv:curtain", ":core:model", "implementation")))
-        assertTrue(out.toString(), out.single().contains("rule 7"))
-        val kotlin = ModuleRules.violations(tv.copy(externals = tv.externals + ExternalDep(":tv:curtain", "org.jetbrains.kotlin:kotlin-stdlib", "implementation")))
-        assertTrue(kotlin.toString(), kotlin.single().contains("rule 7"))
-        val androidx = ModuleRules.violations(tv.copy(externals = tv.externals + ExternalDep(":tv:curtain", "androidx.core:core", "implementation")))
-        assertTrue(androidx.toString(), androidx.single().contains("rule 7"))
-        // A test configuration may still reach it (an e2e test reading its sources, say).
-        assertEquals(emptyList<String>(), ModuleRules.violations(tv.plus(ProjectEdge(":app", ":tv:curtain", "testImplementation"))))
-    }
-
     @Test fun encodeDecodeRoundTrip() {
         assertEquals(clean(), ModuleRules.decode(ModuleRules.encode(clean())).let { d ->
             d.copy(modules = d.modules.map { m -> m.copy(plugins = m.plugins.toSet()) })

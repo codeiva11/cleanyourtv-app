@@ -24,7 +24,6 @@ import tv.cleanyour.core.spec.LauncherConfigDoc
 import tv.cleanyour.testing.fixtures.FakeCredentialGate
 import tv.cleanyour.testing.fixtures.FakeDiscovery
 import tv.cleanyour.testing.fixtures.FakeEngine
-import tv.cleanyour.testing.fixtures.FakeLauncherPin
 import tv.cleanyour.testing.fixtures.FakePlanner
 import tv.cleanyour.testing.fixtures.FakeProber
 import tv.cleanyour.testing.fixtures.FakeProfileSource
@@ -119,22 +118,15 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS), val facts: tv.cl
     // The launchable apps the TV reports (null: the TV could not say).
     var launchable: Set<PackageName>? = null
 
-    fun setupDeps(dock: DockPicker = DockPicker { _, _, _, _, _ -> listOf(PackageName("com.netflix.ninja")) }, curtainPin: tv.cleanyour.core.trust.CurtainPin? = null,
-                  savedWifi: tv.cleanyour.core.probe.SavedWifiOwners? = null, store: StoreRules = StoreRules.FULL,
+    fun setupDeps(store: StoreRules = StoreRules.FULL,
                   candidates: CandidateLists? = null, diagnostics: Diagnostics = Diagnostics { "diagnostics" },
                   about: AppAbout? = null, connectDetail: () -> String? = { null },
-                  themes: tv.cleanyour.core.spec.ThemeSource = this.themes,
                   sessions: tv.cleanyour.core.session.SessionManager = this.sessions,
-                  wrongFocus: (tv.cleanyour.core.model.TvId) -> tv.cleanyour.core.model.Component? = { null },
-                  homeHelper: Boolean = false) = SetupDeps(
+                  wrongFocus: (tv.cleanyour.core.model.TvId) -> tv.cleanyour.core.model.Component? = { null }) = SetupDeps(
         discovery, sessions, prober, profiles, facts, runner, engine, gate, tvs, snapshots, ledger,
-        FakeLauncherPin(Samples.launcherArtifact()), themes, restorePoint, FakeRestoreNote(), sessionEnd, access, clock, KeyCopy,
-        blobs = blobs, dock = dock, screenLock = { true }, diagnostics = diagnostics,
-        launchable = tv.cleanyour.core.probe.LaunchableApps { launchable ?: throw tv.cleanyour.core.probe.ProbeException(tv.cleanyour.core.probe.ProbeStage.LAUNCHER, "no answer") },
+        restorePoint, FakeRestoreNote(), sessionEnd, access, clock, KeyCopy,
+        screenLock = { true }, diagnostics = diagnostics,
         log = FlowLog { logLines += it },
-        homePrefs = HomePrefs(documents),
-        curtainPin = curtainPin,
-        savedWifi = savedWifi,
         store = store,
         homeDecisions = HomeDecisions(documents),
         candidates = candidates,
@@ -142,7 +134,6 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS), val facts: tv.cl
         connectDetail = connectDetail,
         documents = documents,
         wrongFocus = wrongFocus,
-        homeHelper = homeHelper,
     )
 
     fun setup(scope: CoroutineScope, start: SetupStart = SetupStart.Fresh, store: StoreRules = StoreRules.FULL) = SetupMachine(setupDeps(store = store), scope, start)
@@ -151,7 +142,6 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS), val facts: tv.cl
     val fetcher = tv.cleanyour.testing.fixtures.FakeArtifactFetcher(blobs)
     var inspector: tv.cleanyour.core.trust.ApkInspector = tv.cleanyour.testing.fixtures.FakeApkInspector()
     val bundleWriter = tv.cleanyour.testing.fixtures.FakeRestoreBundleWriter()
-    val configTransport = tv.cleanyour.testing.fixtures.FakeConfigTransport()
     var cardAnswer: CardAnswer? = null
     val keyInfo = FakeKeyInfo()
     class FakeKeyInfo : KeyInfo {
@@ -162,19 +152,17 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS), val facts: tv.cl
     }
 
     fun manageDeps(fetcherSources: tv.cleanyour.core.registry.ArtifactFetcher = fetcher, encoder: ConfigEncoder = ConfigEncoder { "{}".encodeToByteArray() },
-                   launcherPin: tv.cleanyour.core.trust.LauncherPin = FakeLauncherPin(Samples.launcherArtifact()),
                    themes: tv.cleanyour.core.spec.ThemeSource = this.themes, store: StoreRules = StoreRules.FULL,
                    updates: UpdateChecker = UpdateChecker { "0.2.0" }, profiles: tv.cleanyour.core.spec.ProfileSource = this.profiles,
-                   about: AppAbout = AppAbout("0.2.0", "full", "", ""), homeHelper: Boolean = false) = ManageDeps(
+                   about: AppAbout = AppAbout("0.2.0", "full", "", "")) = ManageDeps(
         tvs = tvs, sessions = sessions, discovery = discovery, access = access, gate = gate, runner = runner, engine = engine,
         ledger = ledger, prober = prober, profiles = profiles, facts = facts, snapshots = snapshots, documents = documents,
-        blobs = blobs, themes = themes, launcherPin = launcherPin, configTransport = configTransport,
+        blobs = blobs, themes = themes,
         restorePoint = restorePoint, bundleWriter = bundleWriter, registry = registry, fetcher = fetcherSources, inspector = inspector,
         cardDetector = CardAnswerDetector { _, _ -> cardAnswer }, sessionEnd = sessionEnd, homePrefs = HomePrefs(documents),
         appPrefs = AppPrefs(documents), keyInfo = keyInfo, updates = updates, diagnostics = diagnostics,
         clock = clock, copy = KeyCopy, encoder = encoder, store = store, appVersion = about.version, about = about,
         log = FlowLog { logLines += it },
-        homeHelper = homeHelper,
     )
 
     // A TV this phone already set up, connected, with a stored snapshot.
@@ -191,7 +179,6 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS), val facts: tv.cl
         is tv.cleanyour.core.planner.PlanRequest.PutBack -> PlanKind.PUT_BACK
         is tv.cleanyour.core.planner.PlanRequest.SwitchOff -> PlanKind.SWITCH_OFF
         is tv.cleanyour.core.planner.PlanRequest.Leftovers -> PlanKind.LEFTOVERS
-        is tv.cleanyour.core.planner.PlanRequest.ApplyTheme -> PlanKind.THEME
         is tv.cleanyour.core.planner.PlanRequest.AddModule -> PlanKind.ADD_MODULE
         is tv.cleanyour.core.planner.PlanRequest.RemoveModule -> PlanKind.REMOVE_MODULE
         is tv.cleanyour.core.planner.PlanRequest.UseStockHome -> PlanKind.USE_STOCK_HOME
@@ -200,8 +187,6 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS), val facts: tv.cl
         tv.cleanyour.core.planner.PlanRequest.DebugOff -> PlanKind.DEBUG_OFF
         is tv.cleanyour.core.planner.PlanRequest.WriteRestorePoint -> PlanKind.WRITE_RESTORE_POINT
         tv.cleanyour.core.planner.PlanRequest.Reboot -> PlanKind.REBOOT
-        is tv.cleanyour.core.planner.PlanRequest.UpdateLauncher -> PlanKind.UPDATE_LAUNCHER
-        tv.cleanyour.core.planner.PlanRequest.HomeHelperOff -> PlanKind.HOME_HELPER_OFF
     }
 }
 
@@ -216,10 +201,3 @@ val stockComponent: Component get() = Samples.stockLauncher
 suspend fun <T> app.cash.turbine.ReceiveTurbine<T>.drain(): List<T> =
     cancelAndConsumeRemainingEvents().filterIsInstance<app.cash.turbine.Event.Item<T>>().map { it.value }
 
-// 0.4.6: a test written for the release rule (R0 on Xiaomi only) runs with it in a test build too
-// (-Pcyt.wizardStaysAnyBrand=true, which widens R0 to every brand); PlannerFixtures.releaseRule.
-inline fun releaseRule(block: () -> Unit) {
-    val before = tv.cleanyour.core.planner.HomeSwitchRisk.anyBrandForTests
-    tv.cleanyour.core.planner.HomeSwitchRisk.anyBrandForTests = false
-    try { block() } finally { tv.cleanyour.core.planner.HomeSwitchRisk.anyBrandForTests = before }
-}

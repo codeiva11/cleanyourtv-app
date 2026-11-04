@@ -6,10 +6,8 @@ import tv.cleanyour.core.engine.HomeOutcome
 import tv.cleanyour.core.engine.RunStatus
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.PackageName
-import tv.cleanyour.core.probe.SavedWifi
 import tv.cleanyour.core.spec.BundledFactsTable
 import tv.cleanyour.core.spec.BundledProfileSource
-import tv.cleanyour.testing.fixtures.FakeConfigTransport
 import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.Issue036
 import kotlin.test.Test
@@ -26,7 +24,6 @@ import kotlin.time.Duration.Companion.seconds
 // package holds, is the TV with no home at all and keeps the generic card.
 @OptIn(ExperimentalCoroutinesApi::class)
 class Issue629SetupTest {
-    private val others = SavedWifi(true, 1, setOf("android.uid.system:1000"))
     private val tvSettings = PackageName("com.android.tv.settings")
 
     private fun harness(): Harness {
@@ -36,7 +33,7 @@ class Issue629SetupTest {
         h.prober.snapshotFor = { r -> Issue036.hengshanSnapshot(r) }
         val source = BundledProfileSource()
         h.profiles.resolver = { f, _ -> source.resolveNow(f) }
-        val planner = tv.cleanyour.core.planner.DefaultPlanner(h.clock, FakeIdGen(), tv.cleanyour.core.ops.ShellRenderer(), FakeConfigTransport(), "0.3.8")
+        val planner = tv.cleanyour.core.planner.DefaultPlanner(h.clock, FakeIdGen(), tv.cleanyour.core.ops.ShellRenderer(), "0.3.8")
         h.planner.respond = { request, s -> planner.plan(request, s, h.facts, emptyList()) }
         return h
     }
@@ -63,7 +60,7 @@ class Issue629SetupTest {
             val h = harness()
             var taken = 0
             h.engine.onStart = { p -> finish(p, RunStatus.COMPLETED_WITH_SKIPS, HomeOutcome.WRONG_FOCUS) }
-            val m = SetupMachine(h.setupDeps(savedWifi = { others }, wrongFocus = { taken++; focus }), backgroundScope, SetupStart.Fresh)
+            val m = SetupMachine(h.setupDeps(wrongFocus = { taken++; focus }), backgroundScope, SetupStart.Fresh)
             toFound(h, m)
             assertIs<SetupState.Found>(m.state.value, h.logLines.joinToString("\n"))
             m.dispatch(SetupIntent.MakeItClean); settle()
@@ -85,7 +82,7 @@ class Issue629SetupTest {
         val h = harness()
         var taken = 0
         h.engine.onStart = { p -> finish(p, RunStatus.COMPLETED_WITH_SKIPS, HomeOutcome.USER_SAID_NO) }
-        val m = SetupMachine(h.setupDeps(savedWifi = { others }, wrongFocus = { taken++; Component(tvSettings, ".MainSettings") }), backgroundScope, SetupStart.Fresh)
+        val m = SetupMachine(h.setupDeps(wrongFocus = { taken++; Component(tvSettings, ".MainSettings") }), backgroundScope, SetupStart.Fresh)
         toFound(h, m)
         m.dispatch(SetupIntent.MakeItClean); settle()
         assertEquals(StopCase.HOME_USER_SAID_NO, assertIs<SetupState.Stopped>(m.state.value).card.case)

@@ -5,7 +5,6 @@ import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.GroupDefault
 import tv.cleanyour.core.model.HomeClaimant
 import tv.cleanyour.core.model.HomeResolution
-import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageEntry
 import tv.cleanyour.core.model.PackageGroup
@@ -87,9 +86,9 @@ class PatchWallFeedsTest {
             home = HomeResolution(tvlauncher, listOf(HomeClaimant(tvlauncher, 2), HomeClaimant(fallback, -1000)))).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
     }
 
-    // The clean-up alone (the switch has its own rules, HomeSwitchRisk), as the candidate list ran it.
+    // The clean-up alone, as the candidate list ran it.
     private fun setup(resolution: ProfileResolution, snapshot: Snapshot, kept: Set<PackageName> = emptySet(), extraOff: Set<PackageName> = emptySet()): Plan =
-        plan(PlanRequest.Setup(resolution, choices(kept = kept, extraOff = extraOff, installLauncher = false, takeover = false), PlannerFixtures.artifact(), Level.SIMPLE), snapshot = snapshot)
+        plan(PlanRequest.Setup(resolution, choices(kept = kept, extraOff = extraOff)), snapshot = snapshot)
 
     private fun Plan.off(): Set<PackageName> = steps.mapNotNull { (it.op as? Op.Disable)?.pkg }.toSet()
 
@@ -152,8 +151,7 @@ class PatchWallFeedsTest {
         // A feed no group lists, asked for in Custom, is refused while PatchWall stays on.
         val none = ProfileResolution.None(listOf(tvlauncher))
         val s = tv(null)
-        val refused = planner().plan(PlanRequest.Setup(none, choices(extraOff = setOf(mitvPlus), installLauncher = false, takeover = false),
-            PlannerFixtures.artifact(), Level.SIMPLE), s, PlannerFixtures.facts, emptyList())
+        val refused = planner().plan(PlanRequest.Setup(none, choices(extraOff = setOf(mitvPlus))), s, PlannerFixtures.facts, emptyList())
         assertTrue(refused is PlanResult.Refused && refused.reasons.single().endsWith(REASON_PATCHWALL_FEED), "$refused")
         assertEquals(setOf(PATCHWALL, mitvPlus), setup(none, s, extraOff = setOf(PATCHWALL, mitvPlus)).off())
     }
@@ -182,22 +180,19 @@ class PatchWallFeedsTest {
     private fun switchPlan(s: Snapshot, journals: List<tv.cleanyour.core.model.ChangeRecord>, extraOff: Set<PackageName> = emptySet()): PlanResult {
         val res = BundledProfileSource().resolveNow(s.facts, home = s.home, packages = s.packages)
         assertTrue(res is ProfileResolution.BrandSureSet && res.brand == "Xiaomi", "$res")
-        return planner().plan(PlanRequest.Setup(res, choices(extraOff = extraOff, wizardWifi = WizardWifi.NOT_OWNER), PlannerFixtures.artifact(), Level.SIMPLE),
+        return planner().plan(PlanRequest.Setup(res, choices(extraOff = extraOff)),
             s, PlannerFixtures.facts, journals)
     }
 
-    @Test fun reviewA045UpgraderGetsItsFeedsBackOnBeforeTheSwitch() = PlannerFixtures.releaseRule {
+    // Review of beta4: a 0.4.5 Setup on the Xiaomi brand set switched Mi TV+ and the web content off
+    // (the set's ads rows) with PatchWall kept on (its ask row), and left tvlauncher on. The feeds
+    // this app switched off come back on first, before the rest of the plan.
+    @Test fun reviewA045UpgraderGetsItsFeedsBackOn() {
         val s = upgrader()
         val journals = ourDisables(feeds)
-        assertTrue(HomeSwitchRisk.of(s.facts, null, s, WizardWifi.NOT_OWNER, journals = journals) == null, "R0 with our own records")
         val p = assertIs<PlanResult.Ok>(switchPlan(s, journals), "planned").plan
         val ops = p.steps.map { it.op }
-        val section = p.sections.single()
-        for (f in feeds) {
-            val i = ops.indexOf(Op.Enable(f))
-            assertTrue(i in 0 until section.from, "${f.value} back on before the switch: $ops")
-        }
-        assertTrue(Op.Disable(tvlauncher.pkg) in ops)
+        for (f in feeds) assertTrue(Op.Enable(f) in ops, "${f.value} back on: $ops")
         val rows = p.summary.groups.single { it.id == DefaultPlanner.GROUP_PATCHWALL_FEEDS }.rows
         assertEquals(feeds, rows.map { it.pkg }.toSet())
         assertTrue(rows.all { it.protected && !it.off && it.whyProtected == DefaultPlanner.REASON_PATCHWALL_FEED_BACK })
@@ -209,7 +204,7 @@ class PatchWallFeedsTest {
             home = HomeResolution(PlannerFixtures.launcher, listOf(HomeClaimant(PlannerFixtures.launcher, 0), HomeClaimant(fallback, -1000)))).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
         val again = assertIs<PlanResult.Ok>(switchPlan(ours, journals)).plan
         assertEquals(feeds, again.steps.mapNotNull { (it.op as? Op.Enable)?.pkg }.toSet())
-        // With PatchWall switched off by this Setup the feeds stay off and the switch goes ahead.
+        // With PatchWall switched off by this Setup the feeds stay off.
         val pwOff = assertIs<PlanResult.Ok>(switchPlan(s, journals, extraOff = setOf(PATCHWALL))).plan
         assertTrue(pwOff.steps.none { it.op is Op.Enable && (it.op as Op.Enable).pkg in feeds } && Op.Disable(PATCHWALL) in pwOff.steps.map { it.op })
         // No switch asked for and tvlauncher on: the 0.4.5 state stays as it is.
@@ -217,23 +212,6 @@ class PatchWallFeedsTest {
         assertTrue(cleanOnly.steps.none { it.op is Op.Enable })
     }
 
-    @Test fun reviewAFeedOffNotByThisAppKeepsTheSwitchOut() = PlannerFixtures.releaseRule {
-        for (off in listOf(feeds, setOf(mitvPlus), setOf(webContent))) {
-            val s = upgrader(off)
-            for (w in WizardWifi.entries) assertEquals(HomeSwitchRisk.Risk.PATCHWALL_FEEDS, HomeSwitchRisk.of(s.facts, null, s, w), "$off $w")
-            // An exact list too, any brand rule.
-            assertEquals(HomeSwitchRisk.Risk.PATCHWALL_FEEDS, HomeSwitchRisk.of(s.facts, axso2.copy(tested = null), s, WizardWifi.NOT_OWNER, anyBrand = true))
-            val refused = switchPlan(s, emptyList())
-            assertTrue(refused is PlanResult.Refused && HomeSwitchRisk.Risk.PATCHWALL_FEEDS.reason in refused.reasons, "$off: $refused")
-            // Only one of them ours: the other still keeps the switch out.
-            if (off == feeds) assertTrue(switchPlan(s, ourDisables(setOf(mitvPlus))) is PlanResult.Refused)
-            // PatchWall switched off by the same Setup, or off already: no block.
-            assertTrue(switchPlan(s, emptyList(), extraOff = setOf(PATCHWALL)) is PlanResult.Ok, "$off: PatchWall off")
-            assertEquals(null, HomeSwitchRisk.of(s.facts, null, s, WizardWifi.NOT_OWNER, patchWallGoesOff = true))
-            val pwOff = upgrader(off + PATCHWALL)
-            assertEquals(null, HomeSwitchRisk.of(pwOff.facts, null, pwOff, WizardWifi.NOT_OWNER), "$off: PatchWall off already")
-        }
-    }
 
     @Test fun reviewPuttingPatchWallBackPutsItsFeedsBackFirst() {
         val s = tv(axso2, off = feeds + PATCHWALL)

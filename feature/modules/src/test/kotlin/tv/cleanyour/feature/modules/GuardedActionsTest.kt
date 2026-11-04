@@ -10,12 +10,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import tv.cleanyour.core.flows.InstallStep
-import tv.cleanyour.core.flows.ModuleRow
 import tv.cleanyour.core.flows.ModulesIntent
 import tv.cleanyour.core.flows.ModulesState
 import tv.cleanyour.core.flows.UpdateConsent
 import tv.cleanyour.core.model.PermissionStatement
-import tv.cleanyour.core.model.Tier
 import tv.cleanyour.ui.design.theme.CytTheme
 
 // R5-W8 O1 as ruled: removing a module and allowing an update drop a tap through another app's
@@ -41,20 +39,6 @@ class GuardedActionsTest {
         compose.tap("Update", OBSCURED)
         compose.tap("Skip this version", OBSCURED)
         assertEquals(listOf<ModulesIntent>(ModulesIntent.SkipUpdate), hits)
-    }
-
-    // RFC-CARDS-1: "Show its card" sends the look to the TV, so it drops a tap through an overlay too.
-    @Test fun showItsCardIsGuarded() {
-        val hits = mutableListOf<ModulesIntent>()
-        val retro = ModuleRow("retro", "Retro", "NES games", 1L, "MIT", Tier.COMMUNITY, null, installed = true, card = null, updateTo = null)
-        compose.setContent {
-            CytTheme(reducedMotion = true) { InstalledScreen(ModulesState(tvName = "Mi TV 4A", installed = listOf(retro), cardsOff = true), { hits += it }, {}, {}) }
-        }
-        compose.waitForIdle()
-        compose.tap("Show its card", OBSCURED)
-        assertEquals(emptyList<ModulesIntent>(), hits)
-        compose.tap("Show its card", 0)
-        assertEquals(listOf<ModulesIntent>(ModulesIntent.ShowCard("retro")), hits)
     }
 
     @Test fun addAndDoneAreNavigationAndNotGuarded() {

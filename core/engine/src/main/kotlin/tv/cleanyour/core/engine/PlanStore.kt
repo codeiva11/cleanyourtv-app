@@ -148,8 +148,7 @@ object PlanJson {
                 }))
             }
         }))
-        put("keepNames", OpJson.strings(s.keepNames)); put("dock", OpJson.strings(s.dock))
-        put("homeScreenPossible", s.homeScreenPossible); put("replacesLauncher", s.replacesLauncher)
+        put("keepNames", OpJson.strings(s.keepNames))
     }
 
     private fun summary(o: JsonObject): PlanSummary = PlanSummary(
@@ -161,8 +160,6 @@ object PlanJson {
             })
         },
         keepNames = o.arr("keepNames").map { it.jsonPrimitive.content },
-        dock = o.arr("dock").map { it.jsonPrimitive.content },
-        homeScreenPossible = o.bool("homeScreenPossible"), replacesLauncher = o.bool("replacesLauncher"),
     )
 
 }

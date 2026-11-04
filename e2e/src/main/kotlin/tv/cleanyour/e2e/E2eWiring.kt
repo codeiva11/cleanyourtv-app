@@ -55,7 +55,7 @@ object E2eWiring {
     fun planner(d: E2eDeps, renderer: OpRenderer): Planner? = null
     fun engine(d: E2eDeps, prober: Prober, renderer: OpRenderer): Engine? = null
 
-    // W5: the bundled, pinned launcher (LauncherPin) as a blob in d.blobs.
+    // W5: a bundled installable artifact as a blob in d.blobs.
     fun launcher(d: E2eDeps): LauncherArtifact? = null
 
     val pendingPieces: List<String> = listOf(

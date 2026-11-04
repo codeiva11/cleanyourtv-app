@@ -2,6 +2,28 @@
 
 All notable changes to the app. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased — stock-only build (2026-11-04)
+
+### Removed
+- The app no longer installs its own launcher on the TV, and no longer installs the curtain
+  (the TV-side progress app). The TV keeps its own (stock) home screen; progress shows on the
+  phone only. The whole home-screen switch is gone: no takeover, no helper, no look or dock
+  pushed to the TV, no "Update the home screen".
+- The bundled `cleanyourtv-launcher.apk` and `cleanyourtv-curtain.apk` are gone, with the
+  `:feature:launcher` and `:tv:curtain` modules and their pin checks.
+
+### Kept, for TVs already cleaned by 0.4.7
+- A TV that still has the 0.4.7 launcher installed gets it uninstalled by "Undo everything"
+  (the migration path); a stored 0.4.7 plan that is paused mid-switch still finishes or rolls
+  back safely, guarded by the engine as before.
+- The look/dock spec stack stays in the code (it is still read by modules and old stored
+  choices) but nothing sends a look to a TV any more.
+
+### Next
+- The REA autonomous debloat engine and Clean Stock Home (Option A) are wired into Setup
+  next: the REA code exists but never ran in the app flow. Permanent uninstall of REA-found
+  bloat and a real per-app RAM probe are still to come — see docs/history/STOCK-ONLY.md.
+
 ## 0.4.7 (2026-10-30)
 
 ### Home screen

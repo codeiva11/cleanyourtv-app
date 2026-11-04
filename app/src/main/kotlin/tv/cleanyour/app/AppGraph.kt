@@ -25,19 +25,15 @@ import tv.cleanyour.core.engine.DefaultEngine
 import tv.cleanyour.core.engine.DocumentPlanStore
 import tv.cleanyour.core.engine.Engine
 import tv.cleanyour.core.engine.FileJournal
-import tv.cleanyour.core.engine.FileOverlayTransport
 import tv.cleanyour.core.flows.AppForeground
 import tv.cleanyour.core.flows.AppAbout
 import tv.cleanyour.core.flows.AppPrefs
 import tv.cleanyour.core.flows.AppSettingsMachine
 import tv.cleanyour.core.flows.CardAnswerDetector
-import tv.cleanyour.core.flows.ConfigEncoder
-import tv.cleanyour.core.flows.DockPicker
 import tv.cleanyour.core.flows.DocumentTvRepository
 import tv.cleanyour.core.flows.GateKeeper
 import tv.cleanyour.core.flows.HomeDecisions
 import tv.cleanyour.core.flows.HomePrefs
-import tv.cleanyour.core.flows.HomeScreenMachine
 import tv.cleanyour.core.flows.LeftoversMachine
 import tv.cleanyour.core.flows.ManageDeps
 import tv.cleanyour.core.flows.ManageMachine
@@ -60,7 +56,6 @@ import tv.cleanyour.core.flows.SwitchedOffMachine
 import tv.cleanyour.core.flows.TvAccess
 import tv.cleanyour.core.flows.TvSettingsMachine
 import tv.cleanyour.core.model.TvId
-import tv.cleanyour.core.ops.ConfigTransport
 import tv.cleanyour.core.ops.OpRenderer
 import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.core.planner.DefaultPlanner
@@ -74,10 +69,6 @@ import tv.cleanyour.core.spec.BundledFactsTable
 import tv.cleanyour.core.spec.BundledProfileSource
 import tv.cleanyour.core.spec.BundledThemeSource
 import tv.cleanyour.core.store.Clock
-import tv.cleanyour.core.trust.BundledCurtainPin
-import tv.cleanyour.core.trust.BundledLauncherPin
-import tv.cleanyour.core.trust.PinnedCurtain
-import tv.cleanyour.core.trust.PinnedLauncher
 import tv.cleanyour.core.trust.DownloadHosts
 import tv.cleanyour.core.trust.TrustRoots
 
@@ -114,12 +105,7 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
     val sessions = AdbSessionManager(PlainSocketFactory(), signer, tls = null, clock = clock, scope = workScope, log = { CytLog.i(it) })
 
     // W4: the probe and the bundled tables.
-    // An installed APK that hashes to a pinned one has that pin's signer, so it is not copied to read it
-    // (RF-LAUNCHER-240 F11).
-    val prober: Prober = AdbProber(clock, known = mapOf(
-        tv.cleanyour.core.model.Sha256(PinnedLauncher.SHA256) to tv.cleanyour.core.model.Sha256(PinnedLauncher.SIGNER_SHA256),
-        tv.cleanyour.core.model.Sha256(PinnedCurtain.SHA256) to tv.cleanyour.core.model.Sha256(PinnedCurtain.SIGNER_SHA256),
-    ))
+    val prober: Prober = AdbProber(clock)
     // Test build: the person's answers on Setup's candidate list card, which every resolve reads.
     val candidateChoices = tv.cleanyour.core.flows.CandidateChoices(documents)
     val profiles = BundledProfileSource(consent = candidateChoices)
@@ -127,11 +113,9 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
 
     // W3: renderer variant A (the nohup setsid watchdog) until S12 says otherwise.
     val renderer: OpRenderer = ShellRenderer()
-    val configTransport: ConfigTransport = FileOverlayTransport(prober)
     // D23: the engine itself widens the confirm window to 120 s when there is no recent thumbnail,
     // so the planner keeps its 90 s default.
-    val planner = DefaultPlanner(clock, idGen, renderer, configTransport, appVersion, profiles = profiles,
-        curtainSigner = tv.cleanyour.core.model.Sha256(tv.cleanyour.core.trust.PinnedCurtain.SIGNER_SHA256),   // RFC-CURTAIN-1
+    val planner = DefaultPlanner(clock, idGen, renderer, appVersion, profiles = profiles,
         keepUpdatesOn = !store.updatesMayGoOff)                                                               // STORES-PLAN 1
     val snapshots = DocumentSnapshotStore(documents)       // W6
     val journal = FileJournal(dataDir)                     // tvs/<tvId>/journal/<planId>.jsonl
@@ -150,8 +134,6 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
     val blobs = FileBlobStore(app)
     val themes = MaterializedThemeSource(BundledThemeSource(), blobs, onError = { m, t -> CytLog.w(m, t) })
     val inspector = PackageManagerApkInspector(app)
-    val launcherPin = BundledLauncherPin(blobs)
-    val curtainPin = BundledCurtainPin(blobs)   // RFC-CURTAIN-1
     // D41 with this build's hosts: every URL and every redirect hop must be on store.hosts (none in
     // the Play build, so it never sends a request).
     private val hostAllowed: (String) -> Boolean = { DownloadHosts.isAllowed(it, store.hosts) }
@@ -166,9 +148,9 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
 
     val seams = Seams(
         sessions = sessions, keyInfo = keyInfo, prober = prober, profiles = profiles, facts = facts, themes = themes,
-        planner = planner, engine = engine, journal = journal, configTransport = configTransport, snapshots = snapshots,
+        planner = planner, engine = engine, journal = journal, snapshots = snapshots,
         restoreFiles = restoreFiles, restoreNote = restoreNote, bundleWriter = bundleWriter, blobs = blobs,
-        launcherPin = launcherPin, registry = registry, fetcher = fetcher, inspector = inspector, http = http, curtainPin = curtainPin,
+        registry = registry, fetcher = fetcher, inspector = inspector, http = http,
     )
 
     val gate = GateKeeper(credentialGate, clock, copy)
@@ -183,7 +165,7 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
     val diagnostics = LogDiagnostics(appVersion) { "Clean Your TV $appVersion, Android ${android.os.Build.VERSION.SDK_INT}" }
     // 0.3.2 B1, B2: what a report says about the app and the phone (no id of the phone: its maker,
     // model and Android version, as a person would type them into the issue form).
-    // 0.4.8: `testBuild`, any test switch in this build (candidate lists, R0 for any brand, the Home button helper),
+    // 0.4.8: `testBuild`, any test switch in this build (candidate lists, R0 for any brand),
     // for the confirmation's "Build kind" line.
     val about = AppAbout(appVersion, store.flavour, phoneName(), "Android ${android.os.Build.VERSION.RELEASE}", testBuild = testBuild())
     val restarts = tv.cleanyour.core.flows.Restarts(documents)   // 0.4.8: one count for Setup and Manage
@@ -196,18 +178,16 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
     val setupDeps = SetupDeps(
         discovery = discovery, sessions = sessions, prober = prober, profiles = profiles, facts = facts,
         runner = runner, engine = engine, gate = gate, tvs = tvs, snapshots = snapshots, ledger = ledger,
-        launcherPin = launcherPin, themes = themes, restorePoint = restorePoint, restoreNote = restoreNote,
-        sessionEnd = sessionEnd, access = access, clock = clock, copy = copy, blobs = blobs, encoder = ConfigEncoder.Codec,
-        dock = DockPicker.Ranking, screenLock = screenLock,
+        restorePoint = restorePoint, restoreNote = restoreNote,
+        sessionEnd = sessionEnd, access = access, clock = clock, copy = copy,
+        screenLock = screenLock,
         diagnostics = diagnostics, locale = { app.resources.configuration.locales[0].toLanguageTag() },
         log = FlowLog { CytLog.i(it) },   // redacted lines for "Share diagnostics": outcomes and counts only
-        homePrefs = homePrefs,
-        curtainPin = curtainPin,   // RFC-CURTAIN-1
         store = store.rules,       // STORES-PLAN 1
         homeDecisions = homeDecisions,   // 0.3.2 B1
         candidates = tv.cleanyour.core.flows.BundledCandidateLists(profiles, candidateChoices),   // test build
         about = about, connectDetail = { sessions.lastConnectFailure },   // 0.3.6: "Copy error"
-        documents = documents,     // 0.4.0: the person's photo for the look step (OwnPicture)
+        documents = documents,     // the restart counts live here
         wrongFocus = { tvId -> wrongFocus.remove(tvId) },                 // issue #629
         restarts = restarts,       // 0.4.8
     )
@@ -215,8 +195,8 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
     val manageDeps = ManageDeps(
         tvs = tvs, sessions = sessions, discovery = discovery, access = access, gate = gate, runner = runner, engine = engine,
         ledger = ledger, prober = prober, profiles = profiles, facts = facts, snapshots = snapshots,
-        documents = documents, blobs = blobs, themes = themes, launcherPin = launcherPin,
-        configTransport = configTransport, restorePoint = restorePoint, bundleWriter = bundleWriter,
+        documents = documents, blobs = blobs, themes = themes,
+        restorePoint = restorePoint, bundleWriter = bundleWriter,
         registry = registry, fetcher = fetcher, inspector = inspector, cardDetector = CardAnswerDetector.Unknown,
         sessionEnd = sessionEnd, homePrefs = homePrefs, appPrefs = appPrefs, keyInfo = keyInfo, updates = updates,
         diagnostics = diagnostics, clock = clock, copy = copy, encoder = ConfigEncoder.Codec, appVersion = appVersion,
@@ -242,7 +222,6 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
     fun manage(scope: CoroutineScope, tvId: TvId?) = ManageMachine(manageDeps, scope, tvId)
     fun switchedOff(scope: CoroutineScope, tvId: TvId) = SwitchedOffMachine(manageDeps, scope, tvId)
     fun leftovers(scope: CoroutineScope, tvId: TvId) = LeftoversMachine(manageDeps, scope, tvId)
-    fun homeScreen(scope: CoroutineScope, tvId: TvId, again: Boolean = false) = HomeScreenMachine(manageDeps, scope, tvId, again)
     fun modules(scope: CoroutineScope, tvId: TvId) = ModulesMachine(manageDeps, scope, tvId)
     fun restorePoint(scope: CoroutineScope, tvId: TvId) = RestorePointMachine(manageDeps, scope, tvId)
     fun tvSettings(scope: CoroutineScope, tvId: TvId) = TvSettingsMachine(manageDeps, scope, tvId)
@@ -265,7 +244,7 @@ class AppGraph(context: Context, val appVersion: String = versionOf(context), va
             return if (maker.isEmpty() || m.startsWith(maker, ignoreCase = true)) m else "$maker $m"
         }
 
-        fun testBuild(): Boolean = tv.cleanyour.core.planner.HomeHelper.BUILD_ON || tv.cleanyour.core.planner.HomeSwitchRisk.ANY_BRAND_BUILD ||
+        fun testBuild(): Boolean =
             runCatching { tv.cleanyour.core.spec.BundledProfileSource.bundled.profiles.any { it.isCandidate } }.getOrDefault(false)
 
         fun versionOf(context: Context): String =

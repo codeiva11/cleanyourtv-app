@@ -1,60 +1,39 @@
-// CytBottomSheet takes the Material 3 sheet state, which is still marked experimental.
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
-
-package tv.cleanyour.feature.setup
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
 import tv.cleanyour.core.engine.HomeOutcome
-import tv.cleanyour.core.engine.RunState
-import tv.cleanyour.core.flows.AppChoice
 import tv.cleanyour.core.flows.ChipState
 import tv.cleanyour.core.flows.Confirmations
 import tv.cleanyour.core.flows.Finishing
-import tv.cleanyour.core.flows.HomeBlock
-import tv.cleanyour.core.flows.HomeKept
-import tv.cleanyour.core.flows.HomeRole
-import tv.cleanyour.core.flows.IssueLinks
-import tv.cleanyour.core.flows.LookName
 import tv.cleanyour.core.flows.NothingWhy
 import tv.cleanyour.core.flows.Reconnect
 import tv.cleanyour.core.flows.RestartRead
@@ -67,10 +46,8 @@ import tv.cleanyour.core.flows.Sheet
 import tv.cleanyour.core.flows.StopAction
 import tv.cleanyour.core.flows.StopCase
 import tv.cleanyour.core.model.Level
-import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.planner.GroupSummary
 import tv.cleanyour.core.planner.RowSummary
-import tv.cleanyour.core.planner.switchOffCount
 import tv.cleanyour.ui.design.component.ActionColumn
 import tv.cleanyour.ui.design.component.Banner
 import tv.cleanyour.ui.design.component.BannerTone
@@ -84,15 +61,10 @@ import tv.cleanyour.ui.design.component.CytTopBar
 import tv.cleanyour.ui.design.component.DiffGroup
 import tv.cleanyour.ui.design.component.DiffGroupSection
 import tv.cleanyour.ui.design.component.DiffItem
-import tv.cleanyour.ui.design.component.DockApp
-import tv.cleanyour.ui.design.component.DockEditor
-import tv.cleanyour.ui.design.component.DockEditorState
 import tv.cleanyour.ui.design.component.Gap
 import tv.cleanyour.ui.design.component.GlassCheckMark
 import tv.cleanyour.ui.design.component.GroupTone
 import tv.cleanyour.ui.design.component.Lead
-import tv.cleanyour.ui.design.component.LinkRow
-import tv.cleanyour.ui.design.component.ListDivider
 import tv.cleanyour.ui.design.component.ListGroup
 import tv.cleanyour.ui.design.component.ListRow
 import tv.cleanyour.ui.design.component.MonospaceBlock
@@ -116,28 +88,21 @@ import tv.cleanyour.ui.design.component.StopCard
 import tv.cleanyour.ui.design.component.SummaryGroup
 import tv.cleanyour.ui.design.component.SwitchRow
 import tv.cleanyour.ui.design.component.TertiaryButton
-import tv.cleanyour.ui.design.component.TextActionRow
 import tv.cleanyour.ui.design.component.TitleSize
 import tv.cleanyour.ui.design.component.TvStatusChip
 import tv.cleanyour.ui.design.component.TvThumbnail
 import tv.cleanyour.ui.design.component.UndoSnackbarHost
 import tv.cleanyour.ui.design.component.UndoSnackbarState
-import tv.cleanyour.ui.design.component.galleryPictureName
 import tv.cleanyour.ui.design.component.rememberEmphasis
-import tv.cleanyour.ui.design.component.styleName
 import tv.cleanyour.ui.design.component.rememberUndoSnackbarState
-import tv.cleanyour.ui.design.component.LookDoneFooter
-import tv.cleanyour.ui.design.component.LookEditor
-import tv.cleanyour.ui.design.component.LookEditorNav
-import tv.cleanyour.ui.design.component.LookEditorSheet
-import tv.cleanyour.ui.design.component.rememberLookEditorNav
-import tv.cleanyour.ui.design.component.LookEditorState
-import tv.cleanyour.ui.design.component.PhotoPicker
 import tv.cleanyour.ui.design.component.rememberPng
-import tv.cleanyour.ui.design.component.toEditor
 import tv.cleanyour.ui.design.theme.CytTheme
 import tv.cleanyour.ui.design.theme.Glow
-import tv.cleanyour.core.engine.NarrationState as EngineNarration
+// CytBottomSheet takes the Material 3 sheet state, which is still marked experimental.
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package tv.cleanyour.feature.setup
+
 
 // Screens S2d probing, S3, S3a, S3b, S4a, S4b, S4c to S4e and S5 (PRODUCT-SPEC 4, UX 2 screens 3 to 5,
 // UX 4.7, 4.8, 4.14), built from the :ui:design components. Stateless over SetupState and
@@ -153,19 +118,17 @@ fun SetupFlow(
     // 0.3.2 B1: the TV report preview is the app's own screen; this opens it ("report/tv/<id>").
     // 0.4.6: a stop card's "Report a problem" goes through SetupActions.report instead.
     onRoute: (String) -> Unit = {},
-    // 0.4.0: the system photo picker, for "Choose a photo" in the look step.
-    photos: PhotoPicker? = null,
     // 0.4.7: the Why sheet's link to the TV list page (the browser opens it).
     onOpenUrl: (String) -> Unit = {},
 ) {
     when (state) {
         is SetupState.Probing -> ProbingScreen(state, extras, modifier, actions)
-        is SetupState.Found -> FoundScreen(state, extras, actions, modifier, onCopyCommands, onHelpAddTv = { onRoute("report/tv/${state.tvId.value}") }, photos = photos,
+        is SetupState.Found -> FoundScreen(state, extras, actions, modifier, onCopyCommands, onHelpAddTv = { onRoute("report/tv/${state.tvId.value}") },
             onOpenUrl = onOpenUrl)
         is SetupState.Working -> WorkingScreen(state, extras, actions, modifier)
         is SetupState.Check -> CheckScreen(state, extras, actions, modifier, nowMs)
         is SetupState.Stopped -> StoppedScreen(state, extras, actions, modifier)
-        is SetupState.Done -> DoneScreen(state, extras, actions, modifier, onHelpAddTv = { onRoute("report/tv/${state.tvId.value}") }, onOpenUrl = onOpenUrl)
+        is SetupState.Done -> DoneScreen(state, extras, actions, modifier, onOpenUrl = onOpenUrl)
         else -> {}
     }
 }
@@ -214,25 +177,21 @@ internal fun CandidateCard(issue: String?, actions: SetupActions) {
     Gap(8.dp)
 }
 
-// S3 What we found (D4, D17 grey line, UX 2 rules behind the numbers, UX 4.6).
-// 0.4.7 (UX findings 4, 5, 12, 13; PM 1, 7): when the TV keeps its own home screen (HomeKept) the
-// outcome is the first row under the headline, with a short reason and "Why" (the long reason and
-// what would change it, in a sheet), never a banner at the bottom. With nothing to switch off as
-// well, there is no "Make it clean": "Done" ends Setup, and an unlisted TV offers "Help add this TV".
+// S3 What we found (D4, D17 grey line, UX 2 rules behind the numbers).
+// Stock-only: the TV keeps its own home screen, so the outcome is a banner under the headline.
+// With nothing to switch off there is no "Make it clean": "Done" ends Setup, and an unlisted TV
+// offers "Help add this TV".
 @Composable
 fun FoundScreen(
     state: SetupState.Found, extras: SetupExtras, actions: SetupActions, modifier: Modifier = Modifier, onCopyCommands: (String) -> Unit = {},
     onHelpAddTv: () -> Unit = {},
-    photos: PhotoPicker? = null,
     onOpenUrl: (String) -> Unit = {},
 ) {
     val summary = state.plan.summary
-    // Every switch-off of the plan, the home screen switch's own included (round 3).
-    val off = summary.switchOffCount
-    val kept = extras.homeKept as? HomeKept.Blocked ?: if (!summary.homeScreenPossible && extras.homePossible) HomeKept.Blocked(HomeBlock.NONE, extras.fireTv, extras.brand) else null
-    // 0.4.7-beta2 (issue #251): with the Home button helper switched on there is something to do.
-    val nothingToDo = kept != null && off == 0 && !extras.helperOn
-    var why by rememberSaveable { mutableStateOf(false) }
+    // Every switch-off of the plan.
+    val off = summary.groups.sumOf { it.off }
+    // Stock-only: the TV always keeps its own home screen, so an empty plan runs nothing.
+    val nothingToDo = off == 0
     val locale = LocalConfiguration.current.locales[0]
     ScreenScaffold(
         Glow.Tv, modifier,
@@ -240,28 +199,19 @@ fun FoundScreen(
         bottomBar = {
             // UX 7.3 rule 8: the safety sentence sits above the button that needs it, so it is
             // pinned with the button rather than scrolled under it (R4-W8).
-            // D36 (RF-LAUNCHER-240 F1): replacing a home screen app signed with another key erases what
-            // it kept, so S3 says so right above the button; the credential prompt after it is the
-            // confirmation. Pinned with the button, so it cannot be scrolled past unseen.
-            if (summary.replacesLauncher) Banner(stringResource(R.string.found_replaces_launcher), BannerTone.INFO, Modifier.padding(bottom = 12.dp))
             if (!nothingToDo) SafetyLine(stringResource(R.string.found_safety), Modifier.padding(start = 4.dp, end = 4.dp, bottom = 14.dp))
             ActionColumn {
                 when {
-                    // An empty plan on a kept TV runs nothing: no credential prompt, no "Nothing was changed".
-                    // RFC-HELPER-1 (test build): an empty plan still opens Customise where the Home button
-                    // helper is offered, or a TV cleaned before (Run Setup again) could never reach it (#251).
+                    // An empty plan runs nothing: no credential prompt, no "Nothing was changed".
                     nothingToDo && extras.unknownModel -> {
                         PrimaryButton(stringResource(R.string.found_help_add_tv), onHelpAddTv, guardObscured = false)
                         SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })
-                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })
                     }
                     nothingToDo -> {
                         PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)
-                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })
                     }
                     else -> {
-                        // Nothing to switch off and the switch is possible: the button says what it does.
-                        PrimaryButton(stringResource(if (off == 0) R.string.found_switch_home else R.string.found_make_clean), { actions.intent(SetupIntent.MakeItClean) }, loading = extras.starting)
+                        PrimaryButton(stringResource(R.string.found_make_clean), { actions.intent(SetupIntent.MakeItClean) }, loading = extras.starting)
                         TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })
                     }
                 }
@@ -275,15 +225,9 @@ fun FoundScreen(
                 ScreenTitle(stringResource(R.string.found_title_zero_kept), Modifier.padding(top = 8.dp))
                 Body(stringResource(if (extras.unknownModel) R.string.found_zero_kept_unknown_body else R.string.found_zero_kept_body), Modifier.padding(start = 4.dp, top = 8.dp))
             }
-            else -> {
-                ScreenTitle(msg(if (extras.unknownModel) R.string.found_unknown_title else R.string.found_title, "count" to 0), Modifier.padding(top = 8.dp))
-                if (!extras.unknownModel) Body(stringResource(R.string.found_zero_body), Modifier.padding(start = 4.dp, top = 8.dp))
-            }
         }
-        // The outcome first, above the fold: the TV keeps its own home screen, and in one line why.
-        if (kept != null) KeptRow(kept, Modifier.padding(top = 16.dp), onWhy = { why = true })
-        // RFC-HELPER-1 (test build): the Home button helper's outcome instead.
-        if (extras.helperOn) HelperOutcomeRow(Modifier.padding(top = 16.dp))
+        // The outcome first, above the fold: the TV keeps its own home screen.
+        Banner(stringResource(R.string.kept_outcome), BannerTone.INFO, Modifier.padding(top = 16.dp), icon = CytIcons.Info)
         if (extras.unknownModel) {
             if (!nothingToDo) Body(stringResource(R.string.found_unknown_body), Modifier.padding(start = 4.dp, top = 12.dp))
             // 0.4.7: the report sent before, so the same report is not sent again by mistake.
@@ -296,8 +240,7 @@ fun FoundScreen(
             stringResource(R.string.found_see_list), { actions.intent(SetupIntent.Open(Sheet.LIST)) }, Modifier.padding(top = 20.dp),
         )
         if (!nothingToDo) {
-            // UX finding 25: a Fire TV has no Chromecast.
-            val fixed = stringResource(if (extras.fireTv) R.string.found_keep_fixed_fire else R.string.found_keep_fixed)
+            val fixed = stringResource(R.string.found_keep_fixed)
             val apps = summary.keepNames.joinToString(", ")
             val keep = if (summary.keepNames.isEmpty()) msg(R.string.found_keep_paragraph_no_apps, "fixed" to fixed)
             else msg(R.string.found_keep_paragraph, "apps" to apps, "fixed" to fixed)
@@ -306,34 +249,13 @@ fun FoundScreen(
                 color = CytTheme.colors.textSecondary, style = CytTheme.type.bodyMedium,
             )
         }
-        if (kept == null) {
-            // The dock's apps by name, and how many more sit in the rows under it.
-            val all = summary.dock.ifEmpty { extras.dock.map { it.name } }
-            val dock = all.take(extras.dockColumns).joinToString(", ")
-            val below = (all.size - extras.dockColumns).coerceAtLeast(0)
-            // An empty dock never shows "Home screen:" with nothing after it.
-            val row = when {
-                dock.isEmpty() -> stringResource(R.string.found_home_row_empty)
-                below > 0 -> msg(R.string.found_home_row_rows, "dock" to dock, "count" to below)
-                else -> msg(R.string.found_home_row, "dock" to dock)
-            }
-            TextActionRow(row, stringResource(R.string.found_home_change), { actions.intent(SetupIntent.Open(Sheet.DOCK)) }, Modifier.padding(top = 8.dp))
-            // Issue #275: TCL's firmware sends these remote buttons only to Google TV's own home
-            // screen, so the person hears it before the switch, with the way back.
-            // With the Home button helper the TV's own home screen stays Home, so they keep working.
-            if (extras.tclRemoteKeys && !extras.helperOn) Banner(stringResource(R.string.found_tcl_remote_keys), BannerTone.INFO, Modifier.padding(top = 12.dp))
-        }
         if (extras.noScreenLock && !nothingToDo) Body(stringResource(R.string.found_no_lock), Modifier.padding(start = 4.dp, top = 12.dp))
         Gap(8.dp)
     }
     when (state.sheet) {
-        Sheet.LIST, Sheet.CUSTOMISE -> CustomiseSheet(state, extras, actions, onCopyCommands, kept = kept, onOpenUrl = onOpenUrl, onHelpAddTv = onHelpAddTv)
-        Sheet.DOCK -> DockSheet(extras.dock, extras.apps, extras.dockColumns, onDone = { actions.intent(SetupIntent.SetDock(it)); actions.intent(SetupIntent.Open(null)) },
-            onDismiss = { actions.intent(SetupIntent.Open(null)) })
-        Sheet.THEME -> ThemeSheet(extras, actions, photos)
+        Sheet.LIST, Sheet.CUSTOMISE -> CustomiseSheet(state, extras, actions, onCopyCommands, onOpenUrl = onOpenUrl, onHelpAddTv = onHelpAddTv)
         else -> {}
     }
-    if (why && kept != null) CytBottomSheet({ why = false }) { WhyKeptContent(kept, onOpenUrl, onHelpAddTv = if (kept.unlisted && HomeKept.needsList(kept.block, true)) onHelpAddTv else null) }
 }
 
 fun shortDate(ms: Long, locale: java.util.Locale): String = SimpleDateFormat("d MMM", locale).format(Date(ms))
@@ -341,116 +263,41 @@ fun shortDate(ms: Long, locale: java.util.Locale): String = SimpleDateFormat("d 
 // 0.4.7: the outcome, the same words on every screen: "The TV keeps its own home screen.", the
 // short reason for this TV, and "Why" for the long one.
 @Composable
-internal fun KeptRow(kept: HomeKept.Blocked, modifier: Modifier = Modifier, onWhy: () -> Unit) {
-    val outcome = stringResource(R.string.kept_outcome)
-    val reason = keptReason(kept)
-    Banner(
-        buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(outcome) }; append("\n"); append(reason) },
-        BannerTone.INFO, modifier, icon = CytIcons.Info, actionLabel = stringResource(R.string.kept_why), onAction = onWhy,
-    )
-}
 
 // RFC-HELPER-1 (test build): the outcome with the Home button helper, the same words on What we
 // found, Customise and Done: the Home button opens the new home screen, the TV's own stays on.
 @Composable
-internal fun HelperOutcomeRow(modifier: Modifier = Modifier) {
-    val outcome = stringResource(R.string.helper_outcome)
-    val reason = stringResource(R.string.helper_outcome_body)
-    Banner(
-        buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(outcome) }; append("\n"); append(reason) },
-        BannerTone.INFO, modifier, icon = CytIcons.Info,
-    )
-}
 
-// The short reason, one per HomeBlock (UX findings 12 and 13: the TV's brand from its facts, never
-// its nickname; a Fire TV is named for Fire OS).
-@Composable
-internal fun keptReason(kept: HomeKept.Blocked): String = when (kept.block) {
-    HomeBlock.TV_REFUSES -> if (kept.fireTv) stringResource(R.string.kept_reason_fire_tv) else msg(R.string.kept_reason_tv_refuses, "brand" to kept.brand)
-    HomeBlock.OLD_ANDROID -> stringResource(R.string.kept_reason_old_android)
-    HomeBlock.UNKNOWN_HOME -> stringResource(R.string.kept_reason_unknown_home)
-    HomeBlock.WIZARD_WIFI -> stringResource(R.string.kept_reason_wizard_wifi)
-    HomeBlock.WIZARD_WIFI_UNKNOWN -> stringResource(R.string.kept_reason_wizard_wifi_unknown)
-    HomeBlock.CASTING -> stringResource(R.string.kept_reason_casting)
-    HomeBlock.BOOT_LOOP -> stringResource(R.string.kept_reason_boot_loop)
-    HomeBlock.REMOTE_BUTTONS -> stringResource(R.string.kept_reason_remote_buttons)
-    HomeBlock.WIZARD_STAYS_ON -> stringResource(R.string.kept_reason_wizard_stays_on)
-    HomeBlock.HOME_CHANGED -> stringResource(R.string.kept_reason_home_changed)
-    HomeBlock.OTHER_HOME -> stringResource(R.string.kept_reason_other_home)
-    HomeBlock.VENDOR_HOME -> stringResource(R.string.kept_reason_vendor_home)
-    HomeBlock.PATCHWALL_FEEDS -> stringResource(R.string.kept_reason_patchwall_feeds)
-    HomeBlock.NONE -> stringResource(R.string.kept_reason_none)
-}
 
 // The Why sheet: the long reason, what would change it (when something can), the clean-up note and
 // the TV list page. `onHelpAddTv`: a list is what would change it, so the report is one tap away.
 @Composable
-internal fun ColumnScope.WhyKeptContent(kept: HomeKept.Blocked, onOpenUrl: (String) -> Unit = {}, onHelpAddTv: (() -> Unit)? = null) {
-    SheetHeader(stringResource(R.string.kept_why_title))
-    val long = when (kept.block) {
-        HomeBlock.TV_REFUSES -> if (kept.fireTv) stringResource(R.string.found_home_fire_tv) else msg(R.string.found_home_tv_refuses, "brand" to kept.brand)
-        HomeBlock.OLD_ANDROID -> stringResource(R.string.found_home_old_android)
-        HomeBlock.UNKNOWN_HOME -> stringResource(R.string.found_home_unknown_stock)
-        HomeBlock.HOME_CHANGED -> stringResource(R.string.found_home_changed)
-        // A TV no exact profile knows keeps its wizard on whoever saved the Wi-Fi, so the
-        // "forget the network" advice would not help there.
-        HomeBlock.WIZARD_WIFI -> stringResource(if (kept.unlisted) R.string.found_home_wizard_wifi_unlisted else R.string.found_home_wizard_wifi)
-        HomeBlock.WIZARD_WIFI_UNKNOWN -> stringResource(R.string.found_home_wizard_wifi_unknown)
-        HomeBlock.CASTING -> stringResource(R.string.found_home_casting)
-        HomeBlock.BOOT_LOOP -> stringResource(R.string.found_home_boot_loop)
-        HomeBlock.REMOTE_BUTTONS -> stringResource(R.string.found_home_remote_buttons)
-        HomeBlock.WIZARD_STAYS_ON -> stringResource(R.string.found_home_wizard_stays_on)
-        HomeBlock.OTHER_HOME -> stringResource(R.string.found_home_other_home)
-        HomeBlock.VENDOR_HOME -> stringResource(R.string.found_home_vendor_home)
-        HomeBlock.PATCHWALL_FEEDS -> stringResource(R.string.found_home_patchwall_feeds)
-        HomeBlock.NONE -> stringResource(R.string.found_home_none)
-    }
-    Body(long, Modifier.padding(top = 8.dp), color = CytTheme.colors.textPrimary)
-    val next = when {
-        HomeKept.needsList(kept.block, kept.unlisted) && kept.unlisted -> R.string.kept_next_list
-        kept.block == HomeBlock.WIZARD_WIFI -> R.string.kept_next_wifi
-        kept.block == HomeBlock.WIZARD_WIFI_UNKNOWN -> R.string.kept_next_wifi_unknown
-        kept.block == HomeBlock.HOME_CHANGED -> R.string.kept_next_home_changed
-        kept.block == HomeBlock.OTHER_HOME -> R.string.kept_next_other_home
-        kept.block == HomeBlock.PATCHWALL_FEEDS -> R.string.kept_next_patchwall_feeds
-        kept.block == HomeBlock.NONE || kept.block == HomeBlock.UNKNOWN_HOME || kept.block == HomeBlock.WIZARD_STAYS_ON -> null
-        else -> R.string.kept_next_nothing
-    }
-    Overline(stringResource(R.string.kept_what_changes_title), Modifier.padding(top = 20.dp, bottom = 6.dp))
-    Body(stringResource(next ?: R.string.kept_next_list), Modifier.padding(top = 2.dp))
-    if (onHelpAddTv != null) TertiaryButton(stringResource(R.string.found_help_add_tv), onHelpAddTv, Modifier.padding(top = 4.dp))
-    Body(stringResource(R.string.kept_clean_up_note), Modifier.padding(top = 16.dp))
-    LinkRow(stringResource(R.string.kept_tv_list), { onOpenUrl(IssueLinks.TV_LIST) }, Modifier.padding(top = 8.dp))
-    Gap(8.dp)
-}
 
+// S3a See the list / Customise (D2, D3, D21, D22): a modal sheet that scrolls, with its own undo
+// snackbar inside the sheet window.
+@Composable
 // S3a See the list / Customise (D2, D3, D21, D22): a modal sheet that scrolls, with its own undo
 // snackbar inside the sheet window.
 @Composable
 fun CustomiseSheet(
     state: SetupState.Found, extras: SetupExtras, actions: SetupActions, onCopyCommands: (String) -> Unit = {},
-    kept: HomeKept.Blocked? = extras.homeKept as? HomeKept.Blocked, onOpenUrl: (String) -> Unit = {}, onHelpAddTv: () -> Unit = {},
+    onOpenUrl: (String) -> Unit = {}, onHelpAddTv: () -> Unit = {},
 ) {
     val undo = rememberUndoSnackbarState()
     var why by remember { mutableStateOf(false) }
-    var whyKept by remember { mutableStateOf(false) }
     CytBottomSheet({ actions.intent(SetupIntent.Open(null)) }) {
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                CustomiseContent(state, extras, actions, undo, onWhy = { why = true }, onCopyCommands = onCopyCommands, kept = kept, onWhyKept = { whyKept = true })
+                CustomiseContent(state, extras, actions, undo, onWhy = { why = true }, onCopyCommands = onCopyCommands)
             }
             UndoSnackbarHost(undo, Modifier.align(Alignment.BottomCenter))
         }
     }
-    if (why) CytBottomSheet({ why = false }) { WhyContent(state, extras, kept) }
-    if (whyKept && kept != null) CytBottomSheet({ whyKept = false }) { WhyKeptContent(kept, onOpenUrl, onHelpAddTv = if (kept.unlisted && HomeKept.needsList(kept.block, true)) onHelpAddTv else null) }
+    if (why) CytBottomSheet({ why = false }) { WhyContent(state, extras) }
 }
 
-// 0.4.7 (UX findings 1, 2, 3, 11, 15): when the TV keeps its own home screen (`kept`) the sheet
-// opens on the outcome card (the decision the rest depends on) instead of the Home screen group:
-// no Dock, no Look (neither would reach the TV), no "then the new home screen". The home screen's
-// own rows under "We keep these" say they stay in the app's words (HomeRole), and a PatchWall tap
-// that changes the decision says so in the snackbar.
+// Stock-only: the sheet lists what the plan switches off and what it keeps, with the
+// keep-debugging switch and the commands; no dock, no look, no home screen group.
 @Composable
 internal fun ColumnScope.CustomiseContent(
     state: SetupState.Found,
@@ -460,47 +307,22 @@ internal fun ColumnScope.CustomiseContent(
     onWhy: () -> Unit,
     onCopyCommands: (String) -> Unit,
     initiallyOpen: List<String>? = null,
-    kept: HomeKept.Blocked? = extras.homeKept as? HomeKept.Blocked,
-    onWhyKept: () -> Unit = {},
 ) {
     val summary = state.plan.summary
     val total = summary.groups.sumOf { it.total }
-    val off = summary.switchOffCount
+    val off = summary.groups.sumOf { it.off }
     val custom = state.level == Level.CUSTOM
     val keptText = stringResource(R.string.customise_snackbar_kept)
     val offText = stringResource(R.string.customise_snackbar_off)
-    val keptHomeOwnText = stringResource(R.string.customise_snackbar_kept_home_own)
-    val offHomeBackText = stringResource(R.string.customise_snackbar_off_home_back)
     val locale = LocalConfiguration.current.locales[0]
     SheetHeader(
         stringResource(R.string.customise_title),
         trailing = rememberEmphasis(msg(R.string.customise_live, "total" to total, "off" to off), "$off"),
         subtitle = stringResource(R.string.customise_nothing_deleted),
     )
-    if (kept != null) KeptRow(kept, Modifier.padding(top = 12.dp), onWhy = onWhyKept)
-    if (extras.helperOn) HelperOutcomeRow(Modifier.padding(top = 12.dp))   // RFC-HELPER-1 (test build)
-    // "We keep these" holds the protected rows that stay on; a protected row that is off is part of
-    // the home screen switch and stays in its group, shown Off with nothing to flip.
+    // "We keep these" holds the protected rows that stay on.
     val protectedRows = summary.groups.flatMap { g -> g.rows.filter { it.kept() } }
     val groups = summary.groups.map { g -> g.copy(rows = g.rows.filterNot { it.kept() }) }.filter { it.rows.isNotEmpty() }
-    // The home screen's own rows in the app's words (UX finding 3), by what they are to the switch.
-    val roles = extras.homeRoles
-    val wizardName = stringResource(R.string.customise_wizard_name)
-    val wizardOff = stringResource(R.string.customise_wizard_off)
-    val ownHomeOff = stringResource(R.string.customise_own_home_off)
-    val wizardKept = stringResource(R.string.customise_wizard_kept)
-    val ownHomeKept = stringResource(R.string.customise_own_home_kept)
-    // RFC-HELPER-1 (test build): with the Home button helper both stay on, and the rows say why.
-    val wizardStays = if (extras.helperOn) stringResource(R.string.customise_wizard_helper) else wizardKept
-    val ownHomeStays = if (extras.helperOn) stringResource(R.string.customise_own_home_helper) else ownHomeKept
-    val stays = kept != null || extras.helperOn
-    fun RowSummary.item(): DiffItem = when (roles[pkg]) {
-        HomeRole.WIZARD -> if (this.off) DiffItem(pkg.value, wizardName, wizardOff, pkg.value, true, fixed = protected)
-            else if (stays) DiffItem(pkg.value, friendlyName, wizardStays, pkg.value, false, fixed = false) else toItem()
-        HomeRole.OWN_HOME -> if (this.off && protected) DiffItem(pkg.value, friendlyName, ownHomeOff, pkg.value, true, fixed = true)
-            else if (stays && protected) DiffItem(pkg.value, friendlyName, ownHomeStays, pkg.value, false, fixed = false) else toItem()
-        null -> toItem()
-    }
     // The first group opens; the others wait collapsed until tapped (DESIGN-SYSTEM 8.4, mockup 08).
     // Groups keep their order: an opened group expands where it was tapped, and the closed groups
     // around it stay in cards above and below it (device test 2026-10-20: it jumped to the top).
@@ -511,66 +333,24 @@ internal fun ColumnScope.CustomiseContent(
         val last = segments.lastOrNull()
         if (g.id !in open && last != null && last.first().id !in open) segments[segments.lastIndex] = last + g else segments += listOf(g)
     }
-    // UX finding 15: a PatchWall tap that changes the home screen decision says so. PatchWall off
-    // while the TV keeps its own home screen for its feeds brings the switch back; keeping it on
-    // while its feeds are off takes it away.
-    val switchPlanned = kept == null && !extras.helperOn && summary.homeScreenPossible && state.plan.sections.isNotEmpty()
     fun snackText(row: RowSummary): String {
-        val patchWall = row.pkg == extras.patchWall
-        val pattern = when {
-            row.off -> if (patchWall && switchPlanned && extras.patchWallHoldsHome) keptHomeOwnText else keptText
-            else -> if (patchWall && kept?.block == HomeBlock.PATCHWALL_FEEDS) offHomeBackText else offText
-        }
+        val pattern = if (row.off) keptText else offText
         return android.icu.text.MessageFormat(pattern, locale).format(mapOf("name" to row.friendlyName))
     }
     for (seg in segments) key(seg.first().id) {
         val g = seg.first()
         if (g.id in open) {
-            GroupSection(g, custom, onCollapse = { open = open - g.id }, item = { it.item() }) { row ->
+            GroupSection(g, custom, onCollapse = { open = open - g.id }) { row ->
                 actions.intent(SetupIntent.Keep(row.pkg, keep = row.off))
                 undo.show(snackText(row)) { actions.intent(SetupIntent.Keep(row.pkg, keep = !row.off)) }
             }
         } else {
-            CollapsedGroupsCard(seg.map { c -> DiffGroup(c.id, c.title, c.rows.map { it.item() }) }, { open = open + it.key }, Modifier.padding(top = 10.dp))
+            CollapsedGroupsCard(seg.map { c -> DiffGroup(c.id, c.title, c.rows.map { it.toItem() }) }, { open = open + it.key }, Modifier.padding(top = 10.dp))
         }
     }
     if (protectedRows.isNotEmpty()) {
-        ProtectedGroupSection(stringResource(R.string.customise_protected_title), protectedRows.map { it.item() }, onWhy, Modifier.padding(top = 16.dp), showPackageNames = custom)
+        ProtectedGroupSection(stringResource(R.string.customise_protected_title), protectedRows.map { it.toItem() }, onWhy, Modifier.padding(top = 16.dp), showPackageNames = custom)
     }
-    if (kept == null) {
-        Overline(stringResource(R.string.customise_group_home), Modifier.padding(start = 4.dp, top = 16.dp, bottom = 8.dp))
-        ListGroup {
-            val inDock = extras.dock.take(extras.dockColumns).joinToString(", ") { it.name }
-            val below = (extras.dock.size - extras.dockColumns).coerceAtLeast(0)
-            val dockRow = when {
-                extras.dock.isEmpty() -> stringResource(R.string.customise_dock_row_empty)
-                below > 0 -> msg(R.string.customise_dock_row_rows, "names" to inDock, "count" to below,
-                    "rows" to (below + extras.dockColumns - 1) / extras.dockColumns.coerceAtLeast(1))
-                else -> msg(R.string.customise_dock_row, "names" to inDock)
-            }
-            ListRow(dockRow, onClick = { actions.intent(SetupIntent.Open(Sheet.DOCK)) })
-            ListDivider()
-            // The look, and its apps in a row when it is not the look's own ("Look: Console, 6 apps in a row").
-            val theme = lookName(extras)
-            val count = extras.look?.takeIf { it.columns != it.lookColumns }?.columns
-            ListRow(if (count != null) msg(R.string.customise_look_row_count, "theme" to theme, "count" to count) else msg(R.string.customise_look_row, "theme" to theme),
-                onClick = { actions.intent(SetupIntent.Open(Sheet.THEME)) })
-        }
-    }
-    // UX finding 11: the curtain cannot install on an older Android, and a TV that refuses other
-    // home screens refuses it too, so the row is not offered there.
-    val curtainPossible = kept?.block != HomeBlock.OLD_ANDROID && kept?.block != HomeBlock.TV_REFUSES
-    if (custom && curtainPossible) {
-        // RFC-CURTAIN-1: Custom only, on by default; Simple always shows the progress on the TV.
-        Overline(stringResource(R.string.customise_group_tv), Modifier.padding(start = 4.dp, top = 16.dp, bottom = 8.dp))
-        ListGroup {
-            SwitchRow(
-                stringResource(R.string.customise_show_on_tv), extras.draft?.curtain ?: true,
-                { actions.intent(SetupIntent.ShowOnTv(it)) }, subtitle = stringResource(R.string.customise_show_on_tv_note),
-            )
-        }
-    }
-    HomeHelperGroup(extras, actions)   // RFC-HELPER-1 (test build)
     Overline(stringResource(R.string.customise_group_afterwards), Modifier.padding(start = 4.dp, top = 16.dp, bottom = 8.dp))
     ListGroup {
         SwitchRow(
@@ -604,99 +384,20 @@ private fun GroupSection(g: GroupSummary, custom: Boolean, onCollapse: () -> Uni
     )
 }
 
-// "Why?" on the protected group: one reason per row. 0.4.7 (UX finding 3): the home screen's own
-// rows get the app's words, by HomeRole, instead of the planner's reason strings.
+// "Why?" on the protected group: one reason per row.
 @Composable
-internal fun WhyContent(state: SetupState.Found, extras: SetupExtras = SetupExtras(), kept: HomeKept.Blocked? = extras.homeKept as? HomeKept.Blocked) {
+internal fun WhyContent(state: SetupState.Found, extras: SetupExtras = SetupExtras()) {
     SheetHeader(stringResource(R.string.customise_protected_why_title))
     state.plan.summary.groups.flatMap { g -> g.rows.filter { it.kept() } }.forEach { r ->
         Text(r.friendlyName, Modifier.padding(top = 16.dp), color = CytTheme.colors.textPrimary, style = CytTheme.type.titleMedium)
-        val why = when (extras.homeRoles[r.pkg]) {
-            HomeRole.WIZARD -> stringResource(when { extras.helperOn -> R.string.customise_wizard_helper; kept != null -> R.string.customise_wizard_kept; else -> R.string.customise_switch_part })
-            HomeRole.OWN_HOME -> stringResource(when { extras.helperOn -> R.string.customise_own_home_helper; kept != null -> R.string.customise_own_home_kept; else -> R.string.customise_switch_part })
-            null -> r.whyProtected ?: r.description
-        }
-        Body(why, Modifier.padding(top = 4.dp))
-    }
-}
-
-// S3b Your dock: the dock and the rows under it (DockEditor). Hold and drag to reorder; the up and
-// down buttons stay for motor access (UX 7.1). Done hands back the one ordered list.
-@Composable
-fun DockSheet(current: List<AppChoice>, apps: List<AppChoice>, columns: Int, onDone: (List<PackageName>) -> Unit, onDismiss: () -> Unit) {
-    val state = remember(current, columns) { DockEditorState(current.map { it.toDockApp() }, columns) }
-    val scroll = rememberScrollState()
-    val undo = rememberUndoSnackbarState()
-    CytBottomSheet(onDismiss) {
-        Box(Modifier.fillMaxWidth()) {
-            Column(Modifier.verticalScroll(scroll)) {
-                DockContent(state, apps, onDone = { onDone(state.apps.map { PackageName(it.key) }) }, scroll, undo)
-            }
-            UndoSnackbarHost(undo, Modifier.align(Alignment.BottomCenter))
-        }
+        Body(r.whyProtected ?: r.description, Modifier.padding(top = 4.dp))
     }
 }
 
 @Composable
-internal fun DockContent(state: DockEditorState, apps: List<AppChoice>, onDone: () -> Unit, scroll: ScrollState? = null, undo: UndoSnackbarState? = null) {
-    SheetHeader(stringResource(R.string.dock_title), subtitle = msg(R.string.dock_body, "count" to state.columns))
-    DockEditor(state, remember(apps) { apps.map { it.toDockApp() } }, scroll = scroll, undo = undo)
-    PrimaryButton(stringResource(R.string.action_done), onDone, Modifier.padding(top = 20.dp))
-}
 
-internal fun AppChoice.toDockApp() = DockApp(pkg.value, name)
 
-// Customise's look name. 0.4.7: a look2 choice names its style and picture ("Classic with your photo"); the row read
-// only the 0.4.0 theme id before, so a look with the person's own photo said "Look: Default". A 0.4.0 look keeps its
-// name, and the Default look (Classic, no picture) stays "Default".
-@Composable
-private fun lookName(extras: SetupExtras): String = when (val n = LookName.of(extras.look, extras.draft?.themeId)) {
-    is LookName.Legacy -> extras.themes.firstOrNull { it.id == n.themeId }?.name ?: stringResource(R.string.theme_default)
-    is LookName.Styled -> when {
-        n.photo -> msg(R.string.customise_look_photo, "style" to styleName(n.style))
-        n.picture != null -> extras.pictures.firstOrNull { it.id == n.picture }
-            ?.let { msg(R.string.customise_look_picture, "style" to styleName(n.style), "picture" to galleryPictureName(it.id, it.name)) } ?: styleName(n.style)
-        else -> styleName(n.style)
-    }
-}
 
-// The look step (S3a "Look: Default >"): the Look editor of :ui:design, the same pages in the same
-// order as the Look sheet after Setup (Picture, Style, Apps in a row, Names under every app, More
-// options and Advanced), with Done as its footer. A tap only changes the draft (SetupIntent.Look,
-// the same edits as the Look sheet), so nothing here is guarded; the push happens when Setup runs.
-// Closing keeps the choice, so there is no leave question. `pictures`: the pictures by file, given
-// by the screenshot tests (the app reads the files).
-@Composable
-internal fun ThemeSheet(extras: SetupExtras, actions: SetupActions, photos: PhotoPicker? = null) {
-    val editor = extras.toEditor() ?: return
-    LookEditorSheet(
-        editor, onEdit = { actions.intent(SetupIntent.Look(it)) },
-        onPhoto = { jpeg, dim -> actions.intent(SetupIntent.SetOwnPicture(jpeg, dim)) },
-        onClose = { actions.intent(SetupIntent.Open(null)) },
-        footer = { LookDoneFooter { actions.intent(SetupIntent.Open(null)) } },
-        photos = photos, asksBeforeLeaving = false, photoAfter = stringResource(R.string.look_photo_after),
-    )
-}
-
-// The same editor without the modal window, for the screenshot tests (a bounded height, as the
-// sheet gives it).
-@Composable
-internal fun ColumnScope.ThemeContent(extras: SetupExtras, actions: SetupActions, photos: PhotoPicker? = null, pictures: Map<String, ImageBitmap>? = null,
-    modifier: Modifier = Modifier, nav: LookEditorNav = rememberLookEditorNav()) {
-    val editor = extras.toEditor() ?: return
-    LookEditor(
-        editor, onEdit = { actions.intent(SetupIntent.Look(it)) },
-        onPhoto = { jpeg, dim -> actions.intent(SetupIntent.SetOwnPicture(jpeg, dim)) },
-        onClose = { actions.intent(SetupIntent.Open(null)) },
-        footer = { LookDoneFooter { actions.intent(SetupIntent.Open(null)) } },
-        photos = photos, pictures = pictures, modifier = modifier, nav = nav, asksBeforeLeaving = false,
-        photoAfter = stringResource(R.string.look_photo_after),
-    )
-}
-
-// The look step's draft as the editor shows it: the one mapping, LookEditorFrom. Setup has no
-// earlier look yet.
-internal fun SetupExtras.toEditor(): LookEditorState? = look?.toEditor(pictures, ownPicture, ownDim, newPicture, newDim, earlierPicture = null)
 
 // S4a Making it clean: narration, live thumbnail, the quiet "Stop and undo" (UX 4a, D18, D32).
 @Composable
@@ -761,19 +462,14 @@ fun CheckScreen(state: SetupState.Check, extras: SetupExtras, actions: SetupActi
     val remaining = (run.deadlineMs - now).coerceAtLeast(0)
     val total = run.section.confirmWindowMs.coerceAtLeast(1)
     val shot = rememberPng(state.thumbnail ?: run.thumbnail)
-    val locale = LocalConfiguration.current.locales[0]
-    // "Netflix, YouTube, Prime Video and Live TV" in the person's language: the dock's own apps,
-    // the ones along the bottom (the rows under it are not in the sentence).
-    val inDock = state.dockNames.take(extras.dockColumns)
-    val names = remember(inDock, locale) { android.icu.text.ListFormatter.getInstance(locale).format(inDock) }
-    val dock = if (inDock.isEmpty()) stringResource(R.string.check_dock_sentence_empty)
-    else msg(R.string.check_dock_sentence, "dock" to names)
+    // Stock-only: the check only arises for an older build's switch; there is no dock to name.
+    val dock = stringResource(R.string.check_dock_sentence_empty)
     ScreenScaffold(Glow.Tv, modifier, scrollable = false, topBar = { TopBar(extras) }) {
         CountdownConfirm(
             overline = stringResource(R.string.check_overline),
             title = stringResource(R.string.check_title),
             thumbnail = shot,
-            thumbnailDescription = msg(R.string.check_thumbnail_cd, "count" to inDock.size),
+            thumbnailDescription = msg(R.string.check_thumbnail_cd, "count" to 0),
             sentence = dock + " " + stringResource(R.string.check_thumbnail_note),
             instruction = stringResource(R.string.check_press_home),
             liveCheck = stringResource(R.string.check_live_ok),
@@ -857,13 +553,15 @@ internal fun DetailsContent(lines: List<String>) {
 // "Clean-up done", the lead says so with "Why", there is no card to add, and the restart line says
 // the home screen is the TV's own. After a failed switch the next step is Home screen for this TV.
 @Composable
-fun DoneScreen(state: SetupState.Done, extras: SetupExtras, actions: SetupActions, modifier: Modifier = Modifier, onHelpAddTv: () -> Unit = {}, onOpenUrl: (String) -> Unit = {}) {
+// S5 Done (D7, D24, D31, UX 4.8 restart flow).
+// Stock-only: the TV keeps its own home screen, so the title is "Clean-up done" (an older build's
+// switch still says "Your TV is ready"); there is no card to add, and the restart line says the
+// home screen is the TV's own. After a failed switch the next step is Home screen for this TV.
+@Composable
+fun DoneScreen(state: SetupState.Done, extras: SetupExtras, actions: SetupActions, modifier: Modifier = Modifier, onOpenUrl: (String) -> Unit = {}) {
     val s = state.summary
     val locale = LocalConfiguration.current.locales[0]
     val finishing = extras.finishing
-    val kept = extras.homeKept
-    val blocked = kept as? HomeKept.Blocked
-    var why by rememberSaveable { mutableStateOf(false) }
     ScreenScaffold(
         Glow.Done, modifier,
         topBar = { TopBar(extras) },
@@ -878,7 +576,7 @@ fun DoneScreen(state: SetupState.Done, extras: SetupExtras, actions: SetupAction
         Box(Modifier.padding(top = 16.dp, start = 6.dp).semantics { contentDescription = doneCd }) { GlassCheckMark() }
         // Issue #15: a run that changed nothing says so, never "Your TV is ready" over "0 things".
         val nothing = extras.doneNothing
-        ScreenTitle(stringResource(when { nothing -> R.string.done_title_nothing; kept != null -> R.string.done_title_kept; else -> R.string.done_title }),
+        ScreenTitle(stringResource(when { nothing -> R.string.done_title_nothing; s.homeScreenOn -> R.string.done_title; else -> R.string.done_title_kept }),
             Modifier.padding(top = 22.dp), size = TitleSize.DISPLAY)
         val lead = when {
             // "We weren't sure about anything" only when nothing was planned on a TV without an exact list.
@@ -888,14 +586,10 @@ fun DoneScreen(state: SetupState.Done, extras: SetupExtras, actions: SetupAction
                 extras.unknownModel -> R.string.done_body_nothing_unknown
                 else -> R.string.done_body_nothing
             })
-            // RFC-HELPER-1 (test build): the helper's redirect, never "New home screen on" as for the switch.
-            extras.helperOn && extras.doneHomeKept == null -> msg(R.string.done_body_helper, "count" to s.switchedOff)
             s.homeScreenOn -> msg(R.string.done_body, "count" to s.switchedOff)
-            blocked != null -> msg(R.string.done_body_home_kept, "count" to s.switchedOff)
-            else -> msg(R.string.done_body_no_home, "count" to s.switchedOff)
+            else -> msg(R.string.done_body_home_kept, "count" to s.switchedOff)
         }
         Lead(lead, Modifier.padding(top = 8.dp))
-        if (blocked != null) TertiaryButton(stringResource(R.string.kept_why), { why = true })
         // QA of 0.4.5: the home screen switch was tried and the TV's own home screen is back; Done says so and why.
         extras.doneHomeKept?.let { outcome ->
             Body(stringResource(when (outcome) {
@@ -924,14 +618,6 @@ fun DoneScreen(state: SetupState.Done, extras: SetupExtras, actions: SetupAction
             s.skipped.size == 1 -> Body(msg(R.string.done_skipped, "name" to s.skipped.single()), Modifier.padding(start = 4.dp, top = 12.dp))
             s.skipped.size > 1 -> Body(msg(R.string.done_skipped_many, "count" to s.skipped.size), Modifier.padding(start = 4.dp, top = 12.dp))
         }
-        // 0.4.8 (PLAN item 3): the look went to the TV: what the TV shows now, and one tap to send it again.
-        extras.doneShot?.let { png ->
-            ListGroup(Modifier.padding(top = 18.dp)) {
-                ListRow(stringResource(R.string.done_tv_now_title))
-                TvThumbnail(rememberPng(png), stringResource(R.string.done_tv_now_cd), Modifier.padding(start = 16.dp, end = 16.dp), label = null)
-                LinkRow(stringResource(R.string.done_tv_now_again), { actions.intent(SetupIntent.SendLookAgain) }, Modifier.padding(top = 4.dp))
-            }
-        }
         // Nothing changed, so there is nothing a restart could check.
         if (!nothing) RestartCard(state, extras, actions)
         extras.card?.takeIf { it.case == StopCase.NOT_BACK_AFTER_RESTART }?.let { c ->
@@ -949,17 +635,10 @@ fun DoneScreen(state: SetupState.Done, extras: SetupExtras, actions: SetupAction
             )
         }
         ListGroup(Modifier.padding(top = 10.dp)) {
-            // STORES-PLAN 1: the Play build has no add-ons, so Done offers no card to add.
-            // UX finding 9: nor does a TV that keeps its own home screen (a card has nowhere to show).
-            if (extras.addOns && kept == null) {
-                ListRow(stringResource(R.string.done_add_card_title), subtitle = stringResource(R.string.done_add_card_body), onClick = { actions.intent(SetupIntent.AddCard) })
-                ListDivider()
-            }
             ListRow(stringResource(R.string.done_note_title), onClick = { actions.intent(SetupIntent.SaveRestoreNote) })
         }
         Gap(16.dp)
     }
-    if (why && blocked != null) CytBottomSheet({ why = false }) { WhyKeptContent(blocked, onOpenUrl, onHelpAddTv = if (blocked.unlisted && HomeKept.needsList(blocked.block, true)) onHelpAddTv else null) }
 }
 
 // "Restart the TV to check it all sticks" with "Restart" (D24), then the UX 4.8 flow inline.
@@ -981,16 +660,15 @@ private fun RestartCard(state: SetupState.Done, extras: SetupExtras, actions: Se
             is RestartState.Back -> {
                 ListRow(title)
                 Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // UX finding 7: "the new one" only when it is; after a block or a failed switch
-                    // the home screen is the TV's own. 0.4.8: what the app read after the restart (Restarts).
+                    // UX finding 7: "the new one" only when it is; otherwise the home screen is the
+                    // TV's own. 0.4.8: what the app read after the restart (Restarts).
                     val read = extras.restartRead
                     val failedLine = stringResource(R.string.restart_progress_failed)
                     when {
                         read == RestartRead.FAILED -> CheckLine(failedLine, state = CheckState.NONE, emphasised = true)
-                        read == RestartRead.HELD && !extras.helperOn -> CheckLine(stringResource(R.string.restart_progress_held))
+                        read == RestartRead.HELD -> CheckLine(stringResource(R.string.restart_progress_held))
                         else -> CheckLine(stringResource(when {
-                            extras.helperOn && extras.doneHomeKept == null -> R.string.restart_progress_home_helper
-                            state.summary.homeScreenOn || extras.homeKept == null -> R.string.restart_progress_home
+                            state.summary.homeScreenOn -> R.string.restart_progress_home
                             else -> R.string.restart_progress_home_own
                         }))
                     }

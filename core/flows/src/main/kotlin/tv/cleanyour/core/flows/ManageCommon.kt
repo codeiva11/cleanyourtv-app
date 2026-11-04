@@ -1,5 +1,3 @@
-package tv.cleanyour.core.flows
-
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -21,7 +19,6 @@ import tv.cleanyour.core.model.Profile
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvId
-import tv.cleanyour.core.ops.ConfigTransport
 import tv.cleanyour.core.probe.Prober
 import tv.cleanyour.core.registry.ArtifactFetcher
 import tv.cleanyour.core.registry.Registry
@@ -40,7 +37,6 @@ import tv.cleanyour.core.spec.StyleId
 import tv.cleanyour.core.spec.FactsTable
 import tv.cleanyour.core.spec.HomeFit
 import tv.cleanyour.core.spec.Looks
-import tv.cleanyour.core.spec.PictureSource
 import tv.cleanyour.core.spec.ProfileSource
 import tv.cleanyour.core.spec.ThemeSource
 import tv.cleanyour.core.spec.TilesChoice
@@ -50,7 +46,8 @@ import tv.cleanyour.core.store.DocumentStore
 import tv.cleanyour.core.store.SnapshotStore
 import tv.cleanyour.core.store.TvRepository
 import tv.cleanyour.core.trust.ApkInspector
-import tv.cleanyour.core.trust.LauncherPin
+package tv.cleanyour.core.flows
+
 
 // One-shot effects of the Manage family (M1 to M8). Snackbars carry a kind and a name; the screen
 // turns them into the sentence from strings.xml, so the machines stay free of copy.
@@ -65,7 +62,7 @@ sealed interface ManageEffect {
     data object HapticDouble : ManageEffect
 }
 
-enum class SnackKind { PUT_BACK, SWITCHED_OFF, HOME_SAVED, MODULE_REMOVED, EXPORT_SAVED, EXPORT_FAILED, FAILED, HOME_UPDATED,
+enum class SnackKind { PUT_BACK, SWITCHED_OFF, HOME_SAVED, MODULE_REMOVED, EXPORT_SAVED, EXPORT_FAILED, FAILED,
     KEPT_TV_INPUT,    // RF-LAUNCHER-250 F1: a switch-off the live check kept because it runs the TV's inputs
     KEPT_ON,          // issue #10: a switch-off the TV kept on (or the live check refused); nothing changed
     RUN_BUSY,         // Forget this TV refused: setup is still working on this TV
@@ -94,8 +91,6 @@ class ManageDeps(
     val documents: DocumentStore,
     val blobs: BlobStore,
     val themes: ThemeSource,
-    val launcherPin: LauncherPin,
-    val configTransport: ConfigTransport,
     val restorePoint: RestorePointWriter,
     val bundleWriter: RestoreBundleWriter,
     val registry: Registry,
@@ -120,16 +115,12 @@ class ManageDeps(
     val homeDecisions: HomeDecisions = HomeDecisions(documents),
     // 0.4.7: whether and when each TV's report was sent (SentReports).
     val sentReports: SentReports = SentReports(documents),
-    // 0.4.0: the pictures any look can show instead of its own (the app's ThemeSource is one).
-    val pictures: PictureSource = themes as? PictureSource ?: PictureSource.NONE,
     // 0.4.6: the app's redactor, run over what a card puts into a problem report (ReportContext).
     val redact: (String) -> String = { it },
     // 0.4.7: Manage's diagnostics lines (StockHomeBack); outcomes in fixed words.
     val log: FlowLog = FlowLog { },
     // 0.4.7: what each TV's last connect read (StockHomeBack), for Manage's card and the problem report.
     val stockHomeBacks: StockHomeBack.Reads = StockHomeBack.Reads(),
-    // RFC-HELPER-1: whether this build shows the Home button helper (the test build's bundled switch).
-    val homeHelper: Boolean = tv.cleanyour.core.planner.HomeHelper.BUILD_ON,
     // 0.4.8: the restarts this phone counted for each TV (Restarts); the app gives Setup the same one.
     val restarts: Restarts = Restarts(documents),
     // RFC-REACH-1: how the phone is connected, for "Copy connection details" (the app reads ConnectivityManager).

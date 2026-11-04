@@ -47,13 +47,10 @@ object ModuleRules {
         ":feature:connect" to 8,
         ":feature:setup" to 8,
         ":feature:manage" to 8,
-        ":feature:launcher" to 8,
         ":feature:modules" to 8,
         ":feature:backup" to 8,
         ":app" to 9,
         ":benchmark" to 10,
-        // RFC-CURTAIN-1: a separate TV app, bundled as a signed asset, never a Gradle dependency (rule 7).
-        ":tv:curtain" to 10,
     )
 
     // Rule 5: these may only be reached through test configurations.
@@ -99,12 +96,10 @@ object ModuleRules {
         ":feature:connect" to androidCommon,
         ":feature:setup" to androidCommon,
         ":feature:manage" to androidCommon,
-        ":feature:launcher" to androidCommon,
         ":feature:modules" to androidCommon,
         ":feature:backup" to androidCommon,
         ":app" to androidCommon,
         ":benchmark" to androidCommon,
-        ":tv:curtain" to emptySet(),
     )
 
     // Test configurations: test libraries only (section 7.2 of ARCHITECTURE).

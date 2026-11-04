@@ -1,21 +1,13 @@
 package tv.cleanyour.core.flows
 
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runTest
 import tv.cleanyour.core.model.BlobRef
-import tv.cleanyour.core.model.EnabledState
-import tv.cleanyour.core.model.LauncherState
 import tv.cleanyour.core.model.PackageName
-import tv.cleanyour.core.model.PackageState
 import tv.cleanyour.core.model.Sha256
-import tv.cleanyour.core.model.TvId
-import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.spec.BundledThemeSource
 import tv.cleanyour.core.spec.ButtonsChoice
 import tv.cleanyour.core.spec.DecodeResult
 import tv.cleanyour.core.spec.DockLayers
 import tv.cleanyour.core.spec.LauncherConfigCodec
-import tv.cleanyour.core.spec.LiveTvKeys
 import tv.cleanyour.core.spec.LookGates
 import tv.cleanyour.core.spec.Looks
 import tv.cleanyour.core.spec.Movement
@@ -25,16 +17,15 @@ import tv.cleanyour.testing.fixtures.Samples
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
-// look2 migration (spec 8.2, C16): a saved 0.4.0 look keeps sending its 0.4.0 bytes, recorded from
-// baseSha's LookDocs.of and the codec into src/test/resources/legacy-looks before look2 changed
-// anything, until the person sends a new look; its draft opens from the migration table; the first
-// send writes the new form with columns= always.
+// look2 migration (spec 8.2, C16), look-only part: a saved 0.4.0 look keeps its 0.4.0 bytes,
+// recorded from baseSha's LookDocs.of and the codec into src/test/resources/legacy-looks before
+// look2 changed anything; its draft opens from the migration table; a low-memory TV gets Quick
+// on the looks that lift; every style/picture/columns/dock encodes under 64 KB. The push-driven
+// half (Restore mine / dock change / sample matrix through the Look sheet) went with the
+// launcher removal (2026-11-04): no sheet sends a look to a TV any more.
 class LookMigrationTest {
     private val looks = BundledThemeSource()
     private val drafts = LookDrafts(looks, looks, ConfigEncoder.Codec, FakeClock(Samples.NOW_MS))
@@ -42,11 +33,6 @@ class LookMigrationTest {
     private fun fixture(file: String): String =
         assertNotNull(javaClass.getResourceAsStream("/legacy-looks/$file"), "fixture $file").use { it.readBytes() }.decodeToString()
 
-    // 0.4.7: a Manage push also names the harness TV's Live TV app (Samples' com.android.tv), every
-    // other byte the frozen 0.4.0 path's (LookCarry, LiveTvKeys).
-    private fun live(json: String): String =
-        LauncherConfigCodec.encode(LiveTvKeys.apply(assertIs<DecodeResult.Ok>(LauncherConfigCodec.decode(json.encodeToByteArray())).doc,
-            PackageName("com.android.tv"))).decodeToString()
 
     // Every fixture, through the frozen path (LegacyLook) and through a saved legacy HomeChoice as
     // every push of it encodes it (LookDrafts.docOf): JSON text equal, so a diff names the key.
@@ -111,89 +97,13 @@ class LookMigrationTest {
         assertEquals(false, d.movementPicked)
     }
 
-    private val on = PackageState(EnabledState.ENABLED, false, 0, null, false, false, null, false)
 
-    private suspend fun TestScope.home(h: Harness, choice: HomeChoice): Pair<HomeScreenMachine, TvId> {
-        val tv = h.knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash))
-        h.tvs.upsert(tv)
-        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + LegacyCases.fifteen.associateWith { on }, takenAtMs = Samples.NOW_MS + 1))
-        HomePrefs(h.documents).save(tv.id, choice)
-        val m = HomeScreenMachine(h.manageDeps(encoder = ConfigEncoder.Codec, themes = looks), backgroundScope, tv.id)
-        settle()
-        return m to tv.id
-    }
-
-    private fun Harness.lastPush(): String = blobs.bytes(planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().config).decodeToString()
 
     // Restore mine and a dock change on a saved legacy look send its 0.4.0 bytes, and it stays a
     // legacy choice; the first "Put it on the TV" writes the new form, with columns= always.
-    @Test fun restoreMineAndADockChangeKeepTheLegacyBytesUntilTheNextSend() = runTest(timeout = 30.seconds) {
-        for (columns in listOf(null, 6)) {
-            val h = Harness()
-            val dock = LegacyCases.fifteen.take(4)
-            val (m, id) = home(h, HomeChoice(dock, "mist", cards = false, columns = columns))
-            val file = "mist.cols-${columns ?: "own"}.pic-own.dock-4.json"
-            m.dispatch(HomeScreenIntent.RestoreMine); settle()
-            assertEquals(live(fixture(file)), h.lastPush(), "Restore mine: $file")
-            m.dispatch(HomeScreenIntent.SetDock(dock)); settle()
-            assertEquals(live(fixture(file)), h.lastPush(), "a dock change: $file")
-            assertNull(HomePrefs(h.documents).load(id)?.style, "still the legacy choice")
-            assertEquals("mist", m.state.value.themeId)
-            assertEquals(StyleId.CLASSIC to "mist", m.state.value.sentStyle to m.state.value.sentPicture)
-            m.dispatch(HomeScreenIntent.OpenLook); settle()
-            assertEquals("mist", m.state.value.look?.legacyThemeId)
-            assertEquals(columns ?: 5, m.state.value.look?.columns)
-            m.dispatch(HomeScreenIntent.UseLook); settle()
-            val text = assertNotNull(h.documents.read("tvs/${id.value}/home.txt") { it.decodeToString() })
-            assertTrue("\nstyle=classic\n" in text && "\ncolumns=${columns ?: 5}\n" in text, text)
-            assertNotEquals(live(fixture(file)), h.lastPush(), "the new form")
-            val back = assertIs<DecodeResult.Ok>(LauncherConfigCodec.decode(h.lastPush().encodeToByteArray()))
-            assertEquals(emptyList(), back.warnings)
-            // This 1 GB TV gets Quick with Lift and zoom off.
-            assertEquals(listOf(true, true, false), listOf(back.doc.animations, back.doc.reducedMotion, back.doc.advancedEffects))
-            assertEquals(columns ?: 5, back.doc.columns)
-            // After it, Restore mine sends the new form again, byte for byte.
-            val sent = h.lastPush()
-            m.dispatch(HomeScreenIntent.RestoreMine); settle()
-            assertEquals(sent, h.lastPush())
-        }
-    }
-
     // The emulator matrix: every legacy-* case is the 0.4.0 fixture; next-* is the machine's first
     // send of the untouched migrated draft on a 2 GB TV; every case decodes with no warning and is
     // under 64 KB.
-    @Test fun theSampleMatrixIsWhatThePushesSend() = runTest(timeout = 60.seconds) {
-        val names = LookSamples.matrix.map { it.name }
-        assertEquals(names.size, names.toSet().size, "unique names")
-        for (n in listOf("style-classic-mist", "d-spot-ring-off", "adv-lift-on", "movement-off-diwali", "cols-4-spotlight-dock15", "legacy-console-cols5",
-            "next-console-cols5")) assertTrue(n in names, n)
-        for (s in LookSamples.matrix) {
-            val (_, bytes, _) = LookSamples.push(s, looks, looks)
-            assertTrue(bytes.size < 64 * 1024, s.name)
-            assertEquals(emptyList(), assertIs<DecodeResult.Ok>(LauncherConfigCodec.decode(bytes)).warnings, s.name)
-        }
-        for (id in LegacyCases.ids) {
-            val s = LookSamples.matrix.single { it.name == "legacy-$id" }
-            assertEquals(fixture("$id.cols-own.pic-own.dock-4.json"), LookSamples.push(s, looks, looks).second.decodeToString(), s.name)
-        }
-        assertEquals(fixture("console.cols-5.pic-own.dock-4.json"),
-            LookSamples.push(LookSamples.matrix.single { it.name == "legacy-console-cols5" }, looks, looks).second.decodeToString())
-        // next-mist is what the Look sheet sends for an untouched migrated Mist on a 2 GB TV.
-        val h = Harness()
-        val tv = h.knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash))
-        h.tvs.upsert(tv)
-        val facts = Samples.miTvFacts().copy(ramMb = 2048)
-        h.snapshots.save(Samples.snapshot(facts = facts, packages = Samples.miTvPackages() + LookSamples.dock4.associateWith { on }, takenAtMs = Samples.NOW_MS + 1))
-        HomePrefs(h.documents).save(tv.id, HomeChoice(LookSamples.dock4, "mist", cards = false))
-        val m = HomeScreenMachine(h.manageDeps(encoder = ConfigEncoder.Codec, themes = looks), backgroundScope, tv.id)
-        settle()
-        m.dispatch(HomeScreenIntent.OpenLook); settle()
-        m.dispatch(HomeScreenIntent.UseLook); settle()
-        val next = LookSamples.matrix.single { it.name == "next-mist" }
-        assertEquals(live(LookSamples.push(next, looks, looks).second.decodeToString()), h.lastPush())
-        assertEquals(next.choice.copy(dock = LookSamples.dock4), HomePrefs(h.documents).load(tv.id)?.copy(previousPicture = null))
-    }
-
     // Every style with every picture at every apps in a row, with docks of 0, 4 and 24 apps,
     // encodes under 64 KB with no codec warning.
     @Test fun everyStylePictureAndCountEncodesUnder64Kb() {

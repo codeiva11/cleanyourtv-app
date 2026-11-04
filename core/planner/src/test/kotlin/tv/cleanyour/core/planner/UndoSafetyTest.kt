@@ -1,5 +1,7 @@
 package tv.cleanyour.core.planner
 
+import tv.cleanyour.core.ops.HelperLines
+
 import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.DeviceFacts
@@ -84,10 +86,10 @@ class UndoSafetyTest {
     // takes out exactly our entry, every other entry byte for byte and in order, and switches
     // accessibility off only when this app switched it on and nothing else is left.
     @Test fun undoTakesOutOnlyTheHelperAndNeverSwitchesItOn() {
-        val service = HomeHelper.SERVICE.flat
+        val service = HelperLines.SERVICE.flat
         val reader = "com.example.reader/.Reader"
         val added = listOf(
-            change(0, Op.AccessibilityAdd(null, HomeHelper.SERVICE), Prior(settingValue = null)),
+            change(0, Op.AccessibilityAdd(null, HelperLines.SERVICE), Prior(settingValue = null)),
             change(1, Op.SettingsPut(SettingKey.ACCESSIBILITY_ENABLED, "1"), Prior(settingValue = "0")),
         )
         fun tv(enabled: String?, list: String?) = snapshot().withSettings(snapshot().settings + mapOf(SettingKey.ACCESSIBILITY_ENABLED to enabled, SettingKey.ENABLED_ACCESSIBILITY to list))
@@ -98,7 +100,7 @@ class UndoSafetyTest {
             assertTrue(ops.none { it is Op.AccessibilityAdd || it == Op.SettingsPut(SettingKey.ACCESSIBILITY_ENABLED, "1") }, label)
             assertTrue(ops.none { it is Op.SettingsPut && it.key == SettingKey.ENABLED_ACCESSIBILITY && it.value != null }, label)
             val remove = ops.filterIsInstance<Op.AccessibilityRemove>()
-            if (list?.contains(service) == true) assertEquals(listOf(Op.AccessibilityRemove(list, HomeHelper.SERVICE)), remove, label)
+            if (list?.contains(service) == true) assertEquals(listOf(Op.AccessibilityRemove(list, HelperLines.SERVICE)), remove, label)
             else assertTrue(remove.isEmpty(), label)
             val others = list?.split(':')?.filter { it != service }.orEmpty()
             val off = Op.SettingsPut(SettingKey.ACCESSIBILITY_ENABLED, "0") in ops
@@ -106,7 +108,7 @@ class UndoSafetyTest {
             if (enabled == "1" && others.isEmpty()) assertTrue(off, "accessibility goes back off with nothing left: $label")
         }
         // A removal of ours (Manage's Switch off) is never undone.
-        val switchedOff = added + change(5, Op.AccessibilityRemove(service, HomeHelper.SERVICE), Prior(settingValue = service))
+        val switchedOff = added + change(5, Op.AccessibilityRemove(service, HelperLines.SERVICE), Prior(settingValue = service))
         assertTrue(undo(tv("1", reader), switchedOff, p).steps.none { it.op is Op.AccessibilityAdd })
     }
 

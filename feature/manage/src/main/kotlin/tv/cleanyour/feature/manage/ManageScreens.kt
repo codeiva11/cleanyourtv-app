@@ -163,23 +163,19 @@ fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier:
                 if (state.switchingHome) LiveLine(stringResource(R.string.manage_wizard_home_working))
             }
             ListGroup(Modifier.padding(top = 16.dp)) {
-                // 0.3.3 D2: without the new home screen there is no dock to name; the row opens the reason.
-                // 0.4.7 (UX finding 8): installed but not in use says the TV's own is in use; and when the
-                // TV turned its own back on behind this app (StockHomeBack), the row says that.
+                // Stock-only: the TV keeps its own home screen; the row says so and goes nowhere.
+                // When the TV turned its own back on behind this app (StockHomeBack), the row says that.
                 ListRow(stringResource(R.string.manage_row_home),
                     subtitle = when {
                         tv.stockHomeBack -> stringResource(R.string.manage_row_home_stock_back)
-                        tv.homeHelperOn -> stringResource(R.string.manage_row_home_helper)   // RFC-HELPER-1 (test build)
                         tv.ownHome -> stringResource(R.string.manage_row_home_own)
-                        tv.homeInstalledNotInUse -> stringResource(R.string.manage_row_home_not_in_use)
-                        else -> tv.dockNames.joinToString(", ").ifEmpty { null }
-                    },
-                    onClick = { onIntent(ManageIntent.Open(ManageSection.HOME_SCREEN)) })
+                        else -> null
+                    })
                 ListDivider()
                 // STORES-PLAN 1: the Play build has no add-ons, so no row that leads to them.
                 // UX finding 9: without the new home screen a card shows as an app, and the row says so.
                 if (state.addOns) {
-                    ListRow(stringResource(R.string.manage_row_cards), subtitle = if ((tv.ownHome || tv.homeInstalledNotInUse) && !tv.homeHelperOn) stringResource(R.string.manage_row_cards_own_home) else null,
+                    ListRow(stringResource(R.string.manage_row_cards), subtitle = if (tv.ownHome) stringResource(R.string.manage_row_cards_own_home) else null,
                         onClick = { onIntent(ManageIntent.Open(ManageSection.MODULES)) })
                     ListDivider()
                 }
@@ -272,27 +268,8 @@ internal fun ColumnScope.OpenWriteContent(
         else -> stringResource(R.string.openwrite_body)
     }
     val title = msg(if (stale) R.string.openwrite_title_stale else R.string.openwrite_title, "tv" to open.tvName)
-    // 0.4.7 (UX finding 19): a look that did not reach the TV (an ApplyTheme run paused, not STALE)
-    // says so by name, with "Send it again" and "Undo".
-    val look = !setup && !stale && open.kind == PlanKind.THEME && open.tookHome == null
     Gap(8.dp)
-    if (look) {
-        var asking by rememberSaveable(open.planId.value) { mutableStateOf(initiallyAsking) }
-        val pending = asking
-        val question = pending?.let { Confirmations.forOpenWrite(it) }
-        if (pending != null && question != null && !open.busy) {
-            ConfirmQuestionFor(question, onConfirm = { asking = null; onAction(pending) }, onCancel = { asking = null })
-            return
-        }
-        fun act(a: OpenWriteAction) { if (Confirmations.forOpenWrite(a) != null) asking = a else onAction(a) }
-        val lookTitle = msg(R.string.openwrite_title_look, "tv" to open.tvName)
-        StopCard(lookTitle, if (open.notTaken) stringResource(R.string.openwrite_not_taken) else stringResource(R.string.openwrite_body_look),
-            primaryLabel = if (open.busy) null else stringResource(R.string.openwrite_send_again), onPrimary = { act(OpenWriteAction.CARRY_ON) },
-            secondaryLabel = if (open.busy) null else stringResource(R.string.action_undo), onSecondary = { act(OpenWriteAction.UNDO) },
-            tertiaryLabel = if (open.busy) null else stringResource(R.string.openwrite_stop), onTertiary = { act(OpenWriteAction.STOP_HERE) },
-            detailsLabel = if (open.busy) null else stringResource(R.string.openwrite_report), onDetails = { onReport(lookTitle) },
-            busyText = if (open.busy) stringResource(R.string.openwrite_busy) else null)
-    } else if (setup) {
+    if (setup) {
         StopCard(title, body,
             primaryLabel = stringResource(R.string.openwrite_open_setup), onPrimary = onOpenSetup,
             tertiaryLabel = stringResource(R.string.openwrite_later), onTertiary = onDismiss,
@@ -492,12 +469,6 @@ fun AppSettingsScreen(state: AppSettingsState, onIntent: (AppSettingsIntent) -> 
         SectionLabel(stringResource(R.string.appsettings_about))
         ListGroup {
             ListRow(msg(R.string.appsettings_version, "version" to state.version))
-            ListDivider()
-            ListRow(stringResource(R.string.appsettings_launcher_pin_label))
-            MonospaceBlock(
-                listOf(msg(R.string.appsettings_launcher_pin_line, "package" to state.launcherPkg, "version" to state.launcherVersion, "digest" to state.launcherDigest)),
-                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-            )
             ListDivider()
             ListRow(stringResource(R.string.appsettings_key_label), subtitle = stringResource(when (state.keyBacking) {
                 "STRONGBOX" -> R.string.appsettings_key_strongbox

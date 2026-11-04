@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import tv.cleanyour.core.model.ApkInfo
 import tv.cleanyour.core.model.ArtifactRef
 import tv.cleanyour.core.model.BlobRef
-import tv.cleanyour.core.model.LauncherArtifact
 import tv.cleanyour.core.model.Module
 import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.registry.ArtifactFetcher
@@ -19,7 +18,6 @@ import tv.cleanyour.core.registry.Registry
 import tv.cleanyour.core.trust.ApkInspector
 import tv.cleanyour.core.trust.IndexVerdict
 import tv.cleanyour.core.trust.IndexVerifier
-import tv.cleanyour.core.trust.LauncherPin
 import tv.cleanyour.core.trust.Minisign
 import tv.cleanyour.core.trust.MinisignKey
 import tv.cleanyour.core.trust.VerifyOutcome
@@ -96,10 +94,6 @@ class FakeIndexVerifier(@Volatile var verdict: IndexVerdict) : IndexVerifier {
         calls += Call(lastSequence, nowMs)
         return verdict
     }
-}
-
-class FakeLauncherPin(private val artifact: LauncherArtifact) : LauncherPin {
-    override fun bundled(): LauncherArtifact = artifact
 }
 
 // ApkInfo by blob hash; anything unknown is "not a readable APK" (null, R0: 13).

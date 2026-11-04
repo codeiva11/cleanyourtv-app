@@ -13,7 +13,7 @@ import tv.cleanyour.core.model.Snapshot
 // #111) with Mi TV+ and com.xm.webcontent switched off and its own home screen off, and was stuck
 // loading after a restart; Xiaomi's Android 11 firmware opens PatchWall at boot (#1580). Every tested
 // list switches PatchWall off together with its feeds. Shared by the planner (Setup, Switch off,
-// Leftovers, Put back) and HomeSwitchRisk (no switch while a feed stays off).
+// Leftovers, Put back).
 object PatchWallFeeds {
     val PATCHWALL = PackageName("com.mitv.tvhome.atv")
     val FEEDS: Set<PackageName> = setOf(PackageName("com.mitv.tvhome.mitvplus"), PackageName("com.xm.webcontent"))

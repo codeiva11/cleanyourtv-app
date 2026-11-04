@@ -2,14 +2,12 @@ package tv.cleanyour.core.engine
 
 import kotlinx.coroutines.test.runTest
 import tv.cleanyour.core.model.EnabledState
-import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.SnapshotReason
 import tv.cleanyour.core.planner.Choices
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.SwitchOffRule
-import tv.cleanyour.core.planner.WizardWifi
 import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.spec.BundledProfileSource
 import tv.cleanyour.testing.fixtures.FakeProfileSource
@@ -41,8 +39,7 @@ class Issue10Test {
     // The 0.3.2 plan for that box: the Xiaomi sure set, the home screen switch blocked (WIZARD_WIFI).
     // Issue #111: PatchWall is an ask row since 0.3.8, so the owner chose it in Customise here.
     private fun sureSetPlan(h: Harness) = h.plan(PlanRequest.Setup(source.resolveNow(h.tv.facts),
-        Choices(emptySet(), setOf(Issue033.patchwall), null, null, installLauncher = false, takeover = false, replaceLauncherSigner = false, keepDebuggingOn = false,
-            wizardWifi = WizardWifi.OWNER), h.artifact, Level.SIMPLE))
+        Choices(emptySet(), setOf(Issue033.patchwall), false)))
 
     @Test fun aSwitchOffTheTvKeepsOnIsSkippedAndTheRunGoesOn() = runTest(timeout = TEST_TIMEOUT) {
         val h = jaws(this)

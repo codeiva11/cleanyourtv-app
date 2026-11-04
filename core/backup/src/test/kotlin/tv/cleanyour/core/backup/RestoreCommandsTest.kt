@@ -17,7 +17,6 @@ import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
 import tv.cleanyour.testing.fixtures.FakeClock
-import tv.cleanyour.testing.fixtures.FakeConfigTransport
 import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.MapFactsTable
 import tv.cleanyour.testing.fixtures.Samples
@@ -37,7 +36,7 @@ class RestoreCommandsTest {
     // and renderer from the TV the records leave behind, without the ops that leave nothing lasting
     // on the TV (verify, press HOME, restart; the laptop files never carry them).
     private fun phoneUndo(changes: List<ChangeRecord>, removeLauncher: Boolean): List<String> {
-        val planner = DefaultPlanner(FakeClock(), FakeIdGen(), renderer, FakeConfigTransport(), "0.1.0")
+        val planner = DefaultPlanner(FakeClock(), FakeIdGen(), renderer, "0.1.0")
         val r = planner.plan(PlanRequest.UndoEverything(changes, removeLauncher), Scenario.snapshotAfter(changes), MapFactsTable(), changes)
         val plan = (r as? PlanResult.Ok)?.plan ?: fail("refused: $r")
         // The watchdog's own files in tmp, which the phone tidies when it removes the launcher, are

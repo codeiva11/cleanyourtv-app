@@ -10,7 +10,6 @@ import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.Quirk
 import tv.cleanyour.core.ops.Watchdog
-import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.Plan
 import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.session.InstallOutcome
@@ -156,9 +155,7 @@ class SectionTest {
         val bytes = "fake curtain apk".encodeToByteArray()
         val sha = h.tv.acceptApk(bytes, curtainPkg, 1, h.signer)
         val curtain = tv.cleanyour.core.model.LauncherArtifact(curtainPkg, 1, "0.1", sha, h.signer, tv.cleanyour.core.model.BlobRef(sha, bytes.size.toLong(), "bundled:curtain.apk"))
-        val plan = h.plan(tv.cleanyour.core.planner.PlanRequest.Setup(tv.cleanyour.core.spec.ProfileResolution.Exact(h.profile()),
-            tv.cleanyour.core.planner.Choices(emptySet(), emptySet(), null, null, true, true, false, false, wizardWifi = tv.cleanyour.core.planner.WizardWifi.NOT_OWNER),
-            h.artifact, tv.cleanyour.core.model.Level.SIMPLE, curtain = curtain))
+        val plan = h.storedCurtainPlan(h.storedTakeoverPlan(), curtain)
         val removal = plan.steps.last()
         assertEquals(Op.Uninstall(curtainPkg), removal.op)
         assertTrue(removal.index > plan.sections.single().to, "the removal comes after the home screen switch")
@@ -579,8 +576,7 @@ class SectionTest {
         val h = Harness(this)
         h.prober.screenshotOkCount = 5
         val engine = h.engine()
-        val short = tv.cleanyour.core.planner.DefaultPlanner(h.clock, h.idGen, h.renderer, h.transport, "0.1.0", watchdogSeconds = 120)
-        val plan = h.setupPlan(planner = short)
+        val plan = h.setupPlan(watchdogSeconds = 120)
         val s = openCheckScreen(h, engine, plan)
         val armed = h.records(plan).filterIsInstance<JournalRecord.Section>().single()
         assertEquals(armed.deadlineWallMs - DefaultEngine.WATCHDOG_MARGIN_MS, s.deadlineMs)
@@ -657,7 +653,7 @@ class SectionTest {
         val h = Harness(this)
         val engine = h.engine()
         // A short check window (25 s), so its deadline falls inside the minute of tries.
-        val plan = h.setupPlan(planner = DefaultPlanner(h.clock, h.idGen, h.renderer, h.transport, "0.1.0", confirmWindowMs = 25_000))
+        val plan = h.setupPlan(confirmWindowMs = 25_000)
         val s = openCheckScreen(h, engine, plan)
         val presses = mutableListOf<Long>()
         h.tv.onHomeKey = { presses += h.clock.nowMs() }

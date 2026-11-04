@@ -1,89 +1,25 @@
 package tv.cleanyour.core.flows
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runTest
 import tv.cleanyour.core.backup.ChangeSummary
-import tv.cleanyour.core.discovery.DiscoveryEvent
-import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.HomeClaimant
 import tv.cleanyour.core.model.HomeResolution
-import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
-import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.StockHome
-import tv.cleanyour.core.store.SnapshotCodec
-import tv.cleanyour.testing.fixtures.FakeConfigTransport
-import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.Samples
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
-// WP4 item 4 (B5): the stock Home that Setup records (the prior of the switch's SetHome, which the
-// journal, the restore point's homeBefore, step R from the journal and Undo everything all read) is
-// never the system chooser, setupwraith's RecoveryActivity or a FallbackHome, whatever HOME answered
-// when the TV was read. It is the TV's own home screen the switch hands back to.
-@OptIn(ExperimentalCoroutinesApi::class)
+// WP4 item 4 (B5): what counts as a placeholder home screen (never the TV's own home screen):
+// the system chooser, setupwraith's RecoveryActivity and FallbackHome entries.
 class RestorePointHomeTest {
     private val stock = Samples.stockLauncher
     private val chooser = Component(PackageName("android"), "com.android.internal.app.ResolverActivity")
     private val recovery = Component(PackageName("com.google.android.tungsten.setupwraith"), ".RecoveryActivity")
     private val fallback = Component(PackageName("com.android.tv.settings"), ".system.FallbackHome")
     private val vendorFallback = Component(PackageName("com.tcl.keycustomfunctionservice"), ".FallbackHome")
-
-    private suspend fun TestScope.toFound(h: Harness, m: SetupMachine) {
-        h.discovery.emit(DiscoveryEvent.Found(miTvFound)); settle()
-        m.dispatch(SetupIntent.Start); settle()
-        h.discovery.open5555[HOST] = true
-        settle(2_100); settle(700)
-    }
-
-    @Test fun theRecordedStockHomeIsNeverAPlaceholder() = runTest(timeout = 30.seconds) {
-        for (resolved in listOf(chooser, recovery, fallback, vendorFallback, null)) {
-            val h = Harness()
-            h.sessions.allowPromptFor[HOST] = "AB:CD:7F:2A"
-            h.prober.snapshotFor = { r ->
-                Samples.miTvSnapshot(reason = r).let { s ->
-                    // The stock home still claims HOME; the answer to resolve-activity is the placeholder.
-                    val claimants = listOfNotNull(HomeClaimant(stock, 1), resolved?.let { HomeClaimant(it, 0) })
-                    s.copy(home = HomeResolution(resolved, claimants))
-                }.let { it.copy(contentHash = SnapshotCodec.hash(it)) }
-            }
-            val planner = DefaultPlanner(h.clock, FakeIdGen(), tv.cleanyour.core.ops.ShellRenderer(), FakeConfigTransport(), "0.4.5")
-            h.planner.respond = { request, snap -> planner.plan(request, snap, h.facts, emptyList()) }
-            val m = h.setup(backgroundScope)
-            toFound(h, m)
-            val plan = assertIs<SetupState.Found>(m.state.value, "${resolved?.flat}").plan
-            val changes = plan.steps.filter { it.op !is Op.Read }.map { ChangeRecord(plan.id, it.index, it.op, it.prior, Samples.NOW_MS + it.index) }
-            if (resolved == recovery) {
-                // The wizard answering Home: Setup skips the switch up front (HOME_SETUPWRAITH), so no
-                // home screen is recorded at all. The planner's own record is checked below.
-                assertTrue(plan.steps.none { it.op is Op.SetHome }, "the wizard holds Home: no switch")
-                assertEquals(null, ChangeSummary.of(changes).homeBefore)
-                continue
-            }
-            if (resolved == vendorFallback) {
-                // beta4 (issue #825): a vendor service's FallbackHome holds the switch back on every path.
-                assertEquals(HomeBlock.VENDOR_HOME, m.extras.value.homeBlock)
-                assertTrue(plan.steps.none { it.op is Op.SetHome }, "a vendor service's FallbackHome: no switch")
-                continue
-            }
-            val setHome = assertNotNull(plan.steps.firstOrNull { it.op is Op.SetHome }, "${resolved?.flat}: the switch is planned")
-            val recorded = assertNotNull(setHome.prior?.home, "${resolved?.flat}: a home is recorded")
-            assertEquals(stock, recorded, "${resolved?.flat}")
-            assertFalse(StockHome.isPlaceholder(recorded))
-            // Step R in the plan hands HOME to the same stock home.
-            assertTrue(Op.SetHome(stock) in plan.sections.single().rollback, "${resolved?.flat}")
-            // The restore point reads the same record.
-            assertEquals(stock, ChangeSummary.of(changes).homeBefore, "${resolved?.flat}: restore-point.json homeBefore")
-        }
-    }
 
     // The rule itself: what counts as a placeholder, and what a real home screen records as.
     @Test fun placeholdersAreTheChooserFallbackHomesAndTheWizard() {

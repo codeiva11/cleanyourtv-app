@@ -6,8 +6,6 @@ import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.FileRoute
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageState
-import tv.cleanyour.core.planner.PlanRequest
-import tv.cleanyour.core.spec.LauncherConfigDoc
 import tv.cleanyour.testing.fixtures.Recording
 import tv.cleanyour.testing.fixtures.Samples
 import kotlin.test.Test
@@ -31,8 +29,10 @@ class ThemeProviderRunTest {
         return h
     }
 
-    private fun Harness.theme(wallpaper: Boolean = true) = plan(PlanRequest.ApplyTheme(LauncherConfigDoc(), BlobRef(cfgSha, cfg.size.toLong(), "cfg"),
-        if (wallpaper) BlobRef(wallSha, wall.size.toLong(), "wall") else null))
+    // The look the planner used to send as an ApplyTheme plan, built directly: the transport's
+    // provider steps, run by the engine against the scripted TV.
+    private fun Harness.theme(wallpaper: Boolean = true) = opsPlan(*transport.writePlanSteps(BlobRef(cfgSha, cfg.size.toLong(), "cfg"),
+        if (wallpaper) BlobRef(wallSha, wall.size.toLong(), "wall") else null, FileRoute.THEME_PROVIDER).toTypedArray())
 
     // Issues #1279, #1649: an Android 11 Xiaomi whose shell may not write Android/data. The sync push the app used
     // so far fails there; through the provider the look arrives and is the launcher's own.

@@ -21,23 +21,30 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/connect-analyse-clean-hd.gif" width="800" alt="Three steps, phone and TV side by side. 1 Connect: the app finds the TV and the TV asks to allow the phone. 2 Analyse: the phone reads the TV and shows 22 things to switch off while the TV is untouched. 3 Clean: the phone shows Making it clean while the TV shows a lantern scanning the old cards and drawing them into a soft black hole, and the TV ends on its new home screen.">
+  <img src="docs/images/connect-analyse-clean-hd.gif" width="800" alt="Three steps, phone and TV side by side. 1 Connect: the app finds the TV and the TV asks to allow the phone. 2 Analyse: the phone reads the TV and shows 22 things to switch off while the TV is untouched. 3 Clean: the phone shows Making it clean while the TV shows a lantern scanning the old cards and drawing them into a soft black hole, and the TV keeps its own home screen.">
 </p>
+
+## Stock-only build
+
+**This fork installs nothing on the TV.** It cleans with the TV's own (stock) home screen and
+never installs a second launcher or a progress app on the TV — see
+[docs/history/STOCK-ONLY.md](docs/history/STOCK-ONLY.md). The rest of this page describes the
+upstream app; where it says "new home screen", this fork keeps the TV's own.
 
 ## How it works
 
 | 1. Connect | 2. Analyse | 3. Clean |
 | :-: | :-: | :-: |
-| <img src="docs/images/phone-connect.png" width="220" alt="Look at the TV: the TV asks whether to trust this phone; tick Always allow, then choose OK"> | <img src="docs/images/phone-what-we-found.png" width="220" alt="We found 22 things to switch off, grouped into adverts, tracking, apps nobody asked for and brand extras, with everything it keeps listed below"> | <img src="docs/images/phone-done.png" width="220" alt="Your TV is ready: 23 things switched off, new home screen on, everything can be put back"> |
-| The app finds your TV on the Wi-Fi and shows you how to let the phone in with the remote. | It reads what is on the TV and shows the plan: what goes off and what stays. Nothing changes yet. | Tap "Make it clean". A restore point first, then the clutter goes and the new home screen comes on. |
+| <img src="docs/images/phone-connect.png" width="220" alt="Look at the TV: the TV asks whether to trust this phone; tick Always allow, then choose OK"> | <img src="docs/images/phone-what-we-found.png" width="220" alt="We found 22 things to switch off, grouped into adverts, tracking, apps nobody asked for and brand extras, with everything it keeps listed below"> | <img src="docs/images/phone-done.png" width="220" alt="Your TV is ready: 23 things switched off, own home screen kept, everything can be put back"> |
+| The app finds your TV on the Wi-Fi and shows you how to let the phone in with the remote. | It reads what is on the TV and shows the plan: what goes off and what stays. Nothing changes yet. | Tap "Make it clean". A restore point first, then the clutter goes and the TV keeps its own home screen. |
 
 **You need** an Android phone (Android 9 or newer, with a screen lock) on the same Wi-Fi as the TV.
 [Download the APK](https://github.com/udhaykumarbala/cleanyourtv-app/releases/latest) and open it to
 install. Connecting takes about a minute (you switch on network debugging with the remote; the app
 shows you how), and the whole clean-up about five minutes.
 
-Come back any time to put an app back, check for leftovers after a TV update, change the dock or
-the look, or undo everything.
+Come back any time to put an app back, check for leftovers after a TV update, or undo
+everything.
 
 ## What your TV gets
 

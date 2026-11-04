@@ -1,10 +1,5 @@
 package tv.cleanyour.core.trust
 
-import tv.cleanyour.core.model.LauncherArtifact
-import tv.cleanyour.core.model.PackageName
-import tv.cleanyour.core.model.Sha256
-import tv.cleanyour.core.store.BlobStore
-
 // Trust anchors compiled into the app. Changing one is a reviewed code change, never a data file.
 object TrustRoots {
     // Root of the module index chain: signs keys.json only (KeysFile). Release key K2R, generated
@@ -20,73 +15,6 @@ object TrustRoots {
     fun indexVerifier(): MinisignIndexVerifier = MinisignIndexVerifier(indexRoot, keysFloor = BUNDLED_KEYS_SEQUENCE)
 }
 
-// The launcher APK bundled in the phone app (D13, Q1): upstream github.com/Gathin23/cleanyourtv at
-// main after v3.0.0, commit b06ab21 (third_party/cleanyourtv), launcher 3.0 (versionCode 9),
-// `assembleRelease` twice, both re-signed with the dedicated launcher release key and compared by
-// scripts/build-launcher-on-forge.sh (docs/history/reviews/LAUNCHER-300-build-output.txt). The
-// verifyLauncherPin task (part of :core:trust check and of :android:platform preBuild) fails the
-// build when the asset differs.
-object PinnedLauncher {
-    const val ASSET_NAME = "cleanyourtv-launcher.apk"
-    const val UPSTREAM_COMMIT = "b06ab21105c49900cb1ed76b24414dba1e21d0db"
-    const val PACKAGE = "com.gathin.tvhome"
-    const val VERSION_CODE = 9L
-    const val VERSION_NAME = "3.0"
-    const val SIZE = 540_541L
-    const val SHA256 = "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e"
-    // SHA-256 of the signing certificate (DER), "O=cleanyourtv, CN=Clean Your TV launcher", v2 and v3.
-    const val SIGNER_SHA256 = "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
-}
-
-// The TV curtain bundled in the phone app (RFC-CURTAIN-1): module :tv:curtain of this repo, built
-// twice and compared, then signed with the launcher release key by scripts/build-curtain-on-forge.sh.
-// One signer to pin: SIGNER_SHA256 is the launcher's. The verifyCurtainPin task (part of :core:trust
-// check and of :android:platform preBuild) fails the build when the asset differs.
-object PinnedCurtain {
-    const val ASSET_NAME = "cleanyourtv-curtain.apk"
-    const val PACKAGE = "tv.cleanyour.curtain"
-    const val ACTIVITY = ".CurtainActivity"
-    const val RECEIVER = ".CueReceiver"
-    const val VERSION_CODE = 1L
-    const val VERSION_NAME = "0.1"
-    const val SIZE = 65_955L
-    const val SHA256 = "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e"
-    const val SIGNER_SHA256 = PinnedLauncher.SIGNER_SHA256
-}
-
-// LauncherPin over the BlobStore's bundled asset. bundled() refuses an asset whose bytes are not the
-// pinned ones, so a swapped asset can never be offered as the launcher.
-class BundledLauncherPin(private val blobs: BlobStore) : LauncherPin {
-    override fun bundled(): LauncherArtifact {
-        val blob = blobs.bundled(PinnedLauncher.ASSET_NAME)
-        check(blob.sha256.hex == PinnedLauncher.SHA256 && blob.size == PinnedLauncher.SIZE) {
-            "bundled launcher does not match its pin (sha256 ${blob.sha256.hex}, ${blob.size} bytes)"
-        }
-        return LauncherArtifact(
-            pkg = PackageName(PinnedLauncher.PACKAGE),
-            versionCode = PinnedLauncher.VERSION_CODE,
-            versionName = PinnedLauncher.VERSION_NAME,
-            sha256 = Sha256(PinnedLauncher.SHA256),
-            signer = Sha256(PinnedLauncher.SIGNER_SHA256),
-            blob = blob,
-        )
-    }
-}
-
-// CurtainPin over the BlobStore's bundled asset, refusing an asset whose bytes are not the pinned ones.
-class BundledCurtainPin(private val blobs: BlobStore) : CurtainPin {
-    override fun bundled(): LauncherArtifact {
-        val blob = blobs.bundled(PinnedCurtain.ASSET_NAME)
-        check(blob.sha256.hex == PinnedCurtain.SHA256 && blob.size == PinnedCurtain.SIZE) {
-            "bundled curtain does not match its pin (sha256 ${blob.sha256.hex}, ${blob.size} bytes)"
-        }
-        return LauncherArtifact(
-            pkg = PackageName(PinnedCurtain.PACKAGE),
-            versionCode = PinnedCurtain.VERSION_CODE,
-            versionName = PinnedCurtain.VERSION_NAME,
-            sha256 = Sha256(PinnedCurtain.SHA256),
-            signer = Sha256(PinnedCurtain.SIGNER_SHA256),
-            blob = blob,
-        )
-    }
-}
+// Stock-only build (2026-11-04): the bundled launcher (PinnedLauncher) and TV curtain
+// (PinnedCurtain) were removed with the home screen switch. This app installs nothing on the
+// TV anymore, so there are no bundled APK pins left to check. See docs/history/STOCK-ONLY.md.

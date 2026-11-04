@@ -17,7 +17,7 @@ import tv.cleanyour.core.spec.resolveFor
 //
 // `screen`: where the card was, a fixed English word ("Setup", "Connect", "Manage", "Home screen").
 // `card`: the card's title as the person saw it, the TV's own name taken out (named()).
-// `case`: the card's fixed name for the maintainers (a StopCase, a HomeBlock, CONNECT_FAILED).
+// `case`: the card's fixed name for the maintainers (a StopCase, CONNECT_FAILED).
 // `step`: the run's step as the log names it (RunLines), added by ProblemReports.build.
 // `connect`: the card stopped a connect, so there is no TV to read; the report then has the phone's
 // side: how the TV was found (`found`), the `port`, the named error (`error`, LogCodes) and why the

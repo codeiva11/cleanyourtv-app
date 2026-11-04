@@ -28,7 +28,6 @@ import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.RunToken
 import tv.cleanyour.core.model.Sha256
-import tv.cleanyour.core.spec.DockLayers
 import tv.cleanyour.core.model.TrustRecord
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvId
@@ -76,10 +75,8 @@ object TvJson {
             "overlayDigest" to p(it.overlayDigest?.hex), "ourOverlayDigest" to p(it.ourOverlayDigest?.hex)) } ?: JsonNull),
         "wizard" to (tv.wizard?.let { w -> obj("step" to p(w.step), "level" to p(w.level.name),
             "kept" to JsonArray(w.kept.map { p(it.value) }), "extraOff" to JsonArray(w.extraOff.map { p(it.value) }),
-            "dock" to (w.dock?.let { d -> JsonArray(d.map { p(it.value) }) } ?: JsonNull), "themeId" to p(w.themeId),
             "keepDebuggingOn" to p(w.keepDebuggingOn), "planId" to p(w.planId?.value), "updatedAtMs" to p(w.updatedAtMs),
-            "curtain" to p(w.curtain), "columns" to p(w.columns), "picture" to p(w.picture), "look" to p(w.look),
-            "homeHelper" to p(w.homeHelper)) } ?: JsonNull),
+            "cleanStockHome" to p(w.cleanStockHome), "autoDebloat" to p(w.autoDebloat)) } ?: JsonNull),
         "lastSeenAt" to p(tv.lastSeenAt), "debugging" to p(tv.debugging.name),
     )).encodeToByteArray()
 
@@ -98,13 +95,9 @@ object TvJson {
                 it.str("overlayDigest")?.let(::Sha256), it.str("ourOverlayDigest")?.let(::Sha256)) },
             wizard = o.objOrNull("wizard")?.let { w -> WizardDraft(w.int("step") ?: 0, Level.valueOf(w.str("level")!!),
                 w.strings("kept").map(::PackageName).toSet(), w.strings("extraOff").map(::PackageName).toSet(),
-                if (w["dock"] is JsonArray) w.strings("dock").map(::PackageName) else null, w.str("themeId"),
                 w.bool("keepDebuggingOn") ?: false, w.str("planId")?.let(::PlanId), w.long("updatedAtMs") ?: 0,
-                curtain = w.bool("curtain") ?: true,   // RFC-CURTAIN-1: a draft written before the switch existed shows the curtain
-                columns = w.int("columns")?.takeIf { it in DockLayers.MIN_OFFERED_COLUMNS..DockLayers.MAX_OFFERED_COLUMNS },
-                picture = w.str("picture")?.takeIf { it.isNotBlank() },
-                look = w.str("look")?.takeIf { it.isNotBlank() },   // look2: the look step's choice, home.txt line form
-                homeHelper = w.bool("homeHelper") ?: false) },   // RFC-HELPER-1: a draft from before the switch has it off
+                cleanStockHome = w.bool("cleanStockHome") ?: false,
+                autoDebloat = w.bool("autoDebloat") ?: false) },
             lastSeenAt = o.long("lastSeenAt") ?: 0, debugging = DebugState.valueOf(o.str("debugging") ?: "UNKNOWN"),
         )
     }

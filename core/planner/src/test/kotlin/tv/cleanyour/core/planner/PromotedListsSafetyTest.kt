@@ -1,7 +1,6 @@
 package tv.cleanyour.core.planner
 
 import tv.cleanyour.core.model.GroupDefault
-import tv.cleanyour.core.planner.PlannerFixtures.choices
 import tv.cleanyour.core.planner.PlannerFixtures.plan
 import tv.cleanyour.core.planner.PlannerFixtures.refused
 import tv.cleanyour.core.planner.PlannerFixtures.setup
@@ -49,7 +48,7 @@ class PromotedListsSafetyTest {
             val p = all.getValue(id)
             for (g in p.groups.filter { it.default == GroupDefault.DISABLE }) for (e in g.packages)
                 SwitchOffRule.reason(e.name, null, p, null, p.stockLaunchers)?.let { refusedLines += "$id ${e.name.value}: $it" }
-            plan(setup(profile = p, choices = choices(installLauncher = false, takeover = false)))
+            plan(setup(profile = p))
         }
         assertEquals(emptyList(), refusedLines)
     }

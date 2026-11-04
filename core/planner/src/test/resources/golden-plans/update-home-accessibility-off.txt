@@ -1,7 +1,0 @@
-# update-home-accessibility-off
-step 0: group=launcher policy=CONTINUE narration=Updating the home screen to version 3.0
-  prior: present=true
-  sync:bundled:launcher.apk 260000
-step 1: group=launcher policy=CONTINUE narration=Restarting the updated home screen
-  'am' 'force-stop' 'com.gathin.tvhome'
-  'am' 'start' '-n' 'com.gathin.tvhome/.MainActivity'

@@ -16,7 +16,6 @@ import tv.cleanyour.core.planner.PlannerFixtures.stock
 import tv.cleanyour.core.spec.KnownLaunchers
 import tv.cleanyour.core.store.SnapshotCodec
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -80,17 +79,4 @@ class HomeChooserTest {
     // Inside the switch the TV's own home screen still goes off as before, the chooser answering HOME.
     // WP4 item 4: the SetHome's prior (the recorded stock Home) is the stock home, never the chooser,
     // setupwraith's RecoveryActivity, a FallbackHome or nothing.
-    @Test fun theSwitchStillTakesOverFromTheChooserAndRecordsTheStockHome() {
-        val placeholders = listOf(chooser, Component(PackageName("com.google.android.tungsten.setupwraith"), ".RecoveryActivity"),
-            Component(PackageName("com.android.tv.settings"), ".system.FallbackHome"), null)
-        for (resolved in placeholders) {
-            val p = plan(PlannerFixtures.setup(), snapshot = tv(resolved, listOf(stock)))
-            assertTrue(Op.Disable(stock.pkg) in p.steps.map { it.op }, "${resolved?.flat}")
-            assertTrue(Op.SetHome(stock) in p.sections.single().rollback, "${resolved?.flat}")
-            assertEquals(stock, p.steps.single { it.op is Op.SetHome }.prior?.home, "${resolved?.flat}")
-        }
-        // A real home screen answering HOME is recorded as it is.
-        val p = plan(PlannerFixtures.setup(), snapshot = tv(stock, listOf(stock)))
-        assertEquals(stock, p.steps.single { it.op is Op.SetHome }.prior?.home)
-    }
 }

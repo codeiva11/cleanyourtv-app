@@ -102,7 +102,7 @@ sealed interface LookPicture {
 
     companion object {
         const val NONE_ID = "none"
-        const val MINE_ID = "mine"     // the person's own photo for this TV (OwnPicture), resolved by HomeScreenMachine
+        const val MINE_ID = "mine"     // the person's own photo for this TV (OwnPicture), resolved when the look is sent
         const val NEW_ID = "new"       // a photo just made in the open Look sheet, not on the TV yet; never saved as a choice
         const val EARLIER_ID = "earlier"   // look2: the earlier look's photo (EarlierLook), until sent; never saved as a choice
 
@@ -141,9 +141,10 @@ internal object Cards {
 }
 
 // D15: the digest of the config.json Manage just pushed, so the next connect can warn on drift.
+// Stock-only: only a launcher an older build put on the TV has a record to update; with no such
+// record there is nothing to record the digest against.
 internal suspend fun rememberPushedLook(d: ManageDeps, tvId: TvId, digest: Sha256) {
     val tv = d.tv(tvId) ?: return
-    val pin = d.launcherPin.bundled()
-    val l = tv.launcher ?: LauncherState(pin.versionCode, pin.signer, null, null)
+    val l = tv.launcher ?: return
     d.tvs.upsert(tv.copy(launcher = l.copy(overlayDigest = digest, ourOverlayDigest = digest)))
 }

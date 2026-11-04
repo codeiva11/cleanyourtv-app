@@ -6,8 +6,6 @@ import tv.cleanyour.core.model.HomeResolution
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvId
-import tv.cleanyour.core.planner.HomeHelper
-import tv.cleanyour.core.spec.KnownLaunchers
 import tv.cleanyour.core.store.DocumentStore
 
 // 0.4.8 (research/release-0.4.8/PLAN.md item 1): the app counts the restarts itself. Testers sent "it works" as loose
@@ -20,22 +18,19 @@ import tv.cleanyour.core.store.DocumentStore
 // way the count leaves it.
 
 // How the new home screen reaches the TV, for the count and the confirmation: the switch with an exact (or candidate)
-// list, the switch with the setup wizard left on (R0, a brand set or no list), or the Home button helper (test build).
+// list, or the switch with the setup wizard left on (R0, a brand set or no list).
 enum class HomePath(val word: String) {
-    LIST("list"), R0("R0"), HELPER("helper");
+    LIST("list"), R0("R0");
 
     companion object {
         fun of(word: String?): HomePath? = entries.firstOrNull { it.word == word }
 
         // The path for this TV, or null when this app has not put the new home screen in front of it (never switched,
         // switched back with "Use the TV's own home screen", or put back with Undo everything): then nothing is read.
-        // The helper first: with our HomeKeyService listed the TV's own home screen is Home on purpose. Setup's helper
-        // decision counts too while the newest read of the TV is older than the helper (it says nothing of it); once a
-        // read shows the redirect without our service listed, the helper was switched off and nothing is counted.
+        // Stock-only: a TV this build switched has no new home screen, so its path is null and nothing is counted;
+        // only a TV an older build switched still counts.
         fun of(tv: Tv, latest: Snapshot?, decision: HomeDecision?): HomePath? = when {
-            latest != null && HomeHelper.listed(latest) -> HELPER
             tv.launcher == null -> null
-            decision?.redirect == true -> if (latest == null || HomeHelper.state(latest) == HomeHelper.State.NONE) HELPER else null
             tv.profileId != null || decision?.profile?.let { it.startsWith("exact ") || it.startsWith("candidate ") } == true -> LIST
             else -> R0
         }
@@ -138,13 +133,9 @@ class Restarts(private val store: DocumentStore) {
             return c.pkg.value != "android" && "FallbackHome" !in c.cls
         }
 
-        // Whether the new home screen answers Home on `path`. The switch: Home resolves to ours. The helper: Home
-        // resolves to the TV's own Google home screen it sends on from, with ours still a Home claimant (installed and
-        // on); whether the helper's service is bound is not read (that would be a new command), the report says so.
+        // Whether the new home screen answers Home on `path`. The switch: Home resolves to ours.
         fun answers(path: HomePath, home: HomeResolution): Boolean = when (path) {
             HomePath.LIST, HomePath.R0 -> home.resolved?.pkg == Launcher.pkg
-            HomePath.HELPER -> home.resolved?.pkg?.let { p -> KnownLaunchers.generic.any { it.pkg == p } } == true &&
-                home.claimants.any { it.component.pkg == Launcher.pkg }
         }
     }
 }

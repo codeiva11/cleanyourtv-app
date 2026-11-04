@@ -26,7 +26,7 @@ object HomePlaceholder {
     // upstream's tools/disable.sh rule (TROUBLESHOOTING at b06ab21: a package named *factorytest*,
     // *factory_test* or *factorymode* does not count as something else that answers Home), and TCL's
     // factory view, whose FactoryTvActivity claims Home at priority 0 on a TCL 43S5K (issue #1838).
-    // R0 still counts one as another home screen (HomeSwitchRisk.r0Placeholder), as before.
+    // R0 still counts one as another home screen (the R0 placeholder rule), as before.
     private val FACTORY_WORDS = listOf("factorytest", "factory_test", "factorymode")
     private val FACTORY_VIEWS = setOf("com.tcl.factory.view")
 

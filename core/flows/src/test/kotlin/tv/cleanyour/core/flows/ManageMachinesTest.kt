@@ -9,17 +9,13 @@ import tv.cleanyour.core.engine.JournalRecord
 import tv.cleanyour.core.engine.PauseReason
 import tv.cleanyour.core.engine.RunState
 import tv.cleanyour.core.model.AdbError
-import tv.cleanyour.core.model.EnabledState
-import tv.cleanyour.core.model.PackageState
 import tv.cleanyour.core.engine.RunStatus
 import tv.cleanyour.core.engine.StartRefusal
 import tv.cleanyour.core.engine.StartResult
 import tv.cleanyour.core.model.ArtifactRef
 import tv.cleanyour.core.model.ApkInfo
 import tv.cleanyour.core.model.LauncherState
-import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.model.SnapshotReason
-import tv.cleanyour.testing.fixtures.FakeLauncherPin
 import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.Module
 import tv.cleanyour.core.model.ModuleVersion
@@ -39,19 +35,14 @@ import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
 import tv.cleanyour.core.registry.FetchFailure
-import tv.cleanyour.core.spec.DecodeResult
 import tv.cleanyour.core.spec.LauncherConfigCodec
 import tv.cleanyour.core.spec.LauncherConfigDoc
-import tv.cleanyour.core.spec.ProfileResolution
-import tv.cleanyour.testing.fixtures.FakeThemeSource
-import tv.cleanyour.core.spec.Theme
 import tv.cleanyour.core.registry.IndexState
 import tv.cleanyour.core.trust.VerifiedIndex
 import tv.cleanyour.testing.fixtures.FakeApkInspector
 import tv.cleanyour.testing.fixtures.FakeArtifactFetcher
 import tv.cleanyour.testing.fixtures.FakeCredentialGate
 import tv.cleanyour.testing.fixtures.FakeEngine
-import tv.cleanyour.testing.fixtures.Issue034
 import tv.cleanyour.testing.fixtures.Samples
 import tv.cleanyour.testing.fixtures.sha256Of
 import kotlin.test.Test
@@ -512,7 +503,7 @@ class ManageMachinesTest {
     }
 
     @Test fun tvJsonRoundTrips() {
-        val record = Samples.tv().copy(wizard = WizardDraft(3, Level.CUSTOM, setOf(adPkg), setOf(promoPkg), listOf(promoPkg), "aurora", true, PlanId("p1"), 5))
+        val record = Samples.tv().copy(wizard = WizardDraft(3, Level.CUSTOM, setOf(adPkg), setOf(promoPkg), true, PlanId("p1"), 5))
         assertEquals(record, TvJson.decode(TvJson.encode(record)))
         assertEquals("0000 0000 0000", keyDigest12(Samples.zeroHash))
     }
@@ -672,175 +663,10 @@ class ManageMachinesTest {
     // The dock sheet with a row under the dock: the config.json Manage pushes carries the six apps
     // in order (the dock, then Row 2) and rows_below_dock 1, nothing else of ours; Manage reads the
     // choice back the way the TV shows it, so an app switched off since then is skipped.
-    @Test fun dockRowsGoToTheTvAsOneListAndComeBackAsTheTvShowsThem() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val tv = h.knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash)).also { h.tvs.upsert(it) }
-        val six = List(6) { PackageName("com.example.app$it") }
-        fun state(on: Boolean) = PackageState(if (on) EnabledState.ENABLED else EnabledState.DISABLED_USER, false, 0, null, false, false, null, false)
-        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + six.associateWith { state(true) }, takenAtMs = Samples.NOW_MS + 1))
-        val m = HomeScreenMachine(h.manageDeps(encoder = ConfigEncoder.Codec), backgroundScope, tv.id)
-        settle()
-        assertEquals(4, m.state.value.columns)
-        m.dispatch(HomeScreenIntent.SetDock(six + six.first())); settle()
-        val apply = h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().single()
-        assertEquals(six, apply.doc.dockApps)
-        assertEquals(1, apply.doc.rowsBelowDock)
-        // The blob the plan pushes is exactly these bytes, and the launcher reads them back the same.
-        val bytes = LauncherConfigCodec.encode(apply.doc)
-        assertEquals(sha256Of(bytes), apply.config.sha256)
-        val back = assertIs<DecodeResult.Ok>(LauncherConfigCodec.decode(bytes)).doc
-        // RFC-CARDS-1: no kept choice and no overlay on the TV: Manage keeps the launcher's default, on.
-        // 0.4.0: fill_dock false for a dock the person set (0.4.7: the Dock sheet's). 0.4.7: the TV's
-        // Live TV app (Samples' com.android.tv), for the Inputs menu's Live TV row.
-        assertEquals(LauncherConfigDoc(dockApps = six, rowsBelowDock = 1, moduleCards = true, fillDock = false, liveTvPackage = "com.android.tv"), back)
-        assertEquals(six, m.state.value.dock.map { it.pkg })
-        // Later the second app is switched off on the TV: the rest move up a slot, as on the TV.
-        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + six.associateWith { state(it != six[1]) }, takenAtMs = Samples.NOW_MS + 2))
-        val again = HomeScreenMachine(h.manageDeps(encoder = ConfigEncoder.Codec), backgroundScope, tv.id)
-        settle()
-        assertEquals(six - six[1], again.state.value.dock.map { it.pkg })
-    }
-
     // RF-LAUNCHER-250 F4: a new look, and "Restore mine", push the dock as it was saved, even with an
     // app of it switched off on the TV since (the sheet shows it without), so dock_apps stays the same
     // and the TV's own dock edit keeps applying (upstream #340). Up to 18 apps under Six columns.
-    @Test fun aNewLookPushesTheSavedDockUnchanged() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val tv = h.knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash))
-        h.tvs.upsert(tv)
-        val apps = List(18) { PackageName("com.example.app$it") }
-        fun state(on: Boolean) = PackageState(if (on) EnabledState.ENABLED else EnabledState.DISABLED_USER, false, 0, null, false, false, null, false)
-        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + apps.associateWith { state(it != apps[1]) }, takenAtMs = Samples.NOW_MS + 1))
-        val sixColumns = Theme("six-columns", "Six columns", "Six smaller tiles", LauncherConfigDoc(columns = 6), null)
-        val themes = FakeThemeSource(listOf(Theme("aurora", "Aurora", "Navy", LauncherConfigDoc(), null), sixColumns))
-        val deps = h.manageDeps(encoder = ConfigEncoder.Codec, themes = themes)
-        HomePrefs(h.documents).save(tv.id, HomeChoice(apps, "six-columns", cards = false))
-        val m = HomeScreenMachine(deps, backgroundScope, tv.id)
-        settle()
-        assertEquals(apps - apps[1], m.state.value.dock.map { it.pkg }, "the sheet shows the dock as the TV does")
-        m.dispatch(HomeScreenIntent.SetTheme("six-columns")); settle()
-        assertEquals(apps, h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.dockApps)
-        m.dispatch(HomeScreenIntent.RestoreMine); settle()
-        assertEquals(apps, h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.dockApps)
-        // A four-tile look holds 12: the TV gets the first 12 there, the stated limit. 0.4.0: the
-        // saved dock keeps all 18 in order (DockLayers.keep), so Six columns gets them back.
-        m.dispatch(HomeScreenIntent.SetTheme("aurora")); settle()
-        assertEquals(apps.take(12), h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.dockApps)
-        assertEquals(apps, HomePrefs(h.documents).load(tv.id)?.dock)
-        m.dispatch(HomeScreenIntent.SetTheme("six-columns")); settle()
-        assertEquals(apps, h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.dockApps)
-    }
-
     // RFC-CARDS-1: a TV set up with the new home screen and module cards off, Retro in the index.
-    private suspend fun Harness.cardsOffTv(dock: List<PackageName>): Pair<Tv, Module> {
-        val apk = "retro apk bytes".encodeToByteArray()
-        val signer = sha256Of("signer".encodeToByteArray())
-        val ref = ArtifactRef("https://github.com/x/retro.apk", apk.size.toLong(), sha256Of(apk), signer)
-        val version = ModuleVersion(1, "0.1.0", "2026-10-03", ref, emptyList(), "", 21, emptyList(), emptyList())
-        val retro = Module("retro", "Retro", "NES games on the TV", "A card", PackageName("io.github.example.retro"), "card", Tier.COMMUNITY,
-            "example", "https://github.com/example/retro", "MIT", null, null, listOf(version))
-        registry.onRefresh = { IndexState.Ready(VerifiedIndex(1, Long.MAX_VALUE, listOf(retro), emptyList()), stale = false, fetchedAtMs = 0) }
-        inspector = FakeApkInspector(mapOf(sha256Of(apk) to ApkInfo(retro.pkg, 1, "0.1.0", signer, sha256Of(apk), apk.size.toLong(), "test")))
-        retroFetcher = FakeArtifactFetcher(blobs, mapOf(ref.url to apk))
-        val tv = knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash))
-        tvs.upsert(tv)
-        HomePrefs(documents).save(tv.id, HomeChoice(dock, "aurora", cards = false))
-        return tv to retro
-    }
-    private var retroFetcher: tv.cleanyour.core.registry.ArtifactFetcher? = null
-    private fun Harness.cardsDeps() = manageDeps(retroFetcher ?: fetcher, encoder = ConfigEncoder.Codec)
-    private fun Harness.pushedDoc(config: tv.cleanyour.core.model.BlobRef?): LauncherConfigDoc =
-        assertIs<DecodeResult.Ok>(LauncherConfigCodec.decode(blobs.bytes(assertNotNull(config)))).doc
-
-    // Adding a card is the person asking for cards: the AddModule plan itself carries the look with
-    // module_cards on (the dock and theme kept for the TV), the choice is kept, and a later theme
-    // change keeps it on.
-    @Test fun addingACardTurnsModuleCardsOnInTheSamePlanAndALaterLookKeepsThem() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val dock = listOf(PackageName("com.netflix.ninja"), PackageName("com.google.android.youtube.tv"))
-        val (tv, _) = h.cardsOffTv(dock)
-        h.respond(PlanKind.ADD_MODULE, listOf(Op.Disable(adPkg)))
-        val m = ModulesMachine(h.cardsDeps(), backgroundScope, tv.id, pollMs = 1_000)
-        settle()
-        assertTrue(m.state.value.cardsOff)
-        m.dispatch(ModulesIntent.Add("retro")); settle()
-        assertIs<InstallStep.Asking>(m.state.value.install)
-        val add = h.planner.requests.filterIsInstance<PlanRequest.AddModule>().single()
-        val doc = h.pushedDoc(add.config)
-        assertEquals(true, doc.moduleCards)
-        assertEquals(dock, doc.dockApps)
-        assertEquals(h.themes.bundled().single { it.id == "aurora" }.wallpaper, add.wallpaper)
-        assertEquals(HomeChoice(dock, "aurora", cards = true), HomePrefs(h.documents).load(tv.id))
-        assertEquals(add.config?.sha256, h.tvs.tvs.value.single().launcher?.ourOverlayDigest)
-        assertFalse(m.state.value.cardsOff)
-        // A new look later keeps the cards on.
-        val home = HomeScreenMachine(h.cardsDeps(), backgroundScope, tv.id)
-        settle()
-        home.dispatch(HomeScreenIntent.SetTheme("aurora")); settle()
-        assertEquals(true, h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.moduleCards)
-        assertEquals(true, HomePrefs(h.documents).load(tv.id)?.cards)
-        // With the cards already on, the next add sends no look.
-        m.dispatch(ModulesIntent.DismissInstall); settle()
-        m.dispatch(ModulesIntent.Add("retro")); settle()
-        assertNull(h.planner.requests.filterIsInstance<PlanRequest.AddModule>().last().config)
-    }
-
-    // 0.4.0 (LooksTest 7): the cards push keeps the person's apps in a row and the whole saved dock,
-    // not only the part the TV shows.
-    @Test fun theCardsPushKeepsAppsInARowAndTheWholeDock() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val apps = List(18) { PackageName("com.example.app$it") }
-        val (tv, _) = h.cardsOffTv(apps)
-        HomePrefs(h.documents).save(tv.id, HomeChoice(apps, "aurora", cards = false, columns = 5))
-        h.respond(PlanKind.ADD_MODULE, listOf(Op.Disable(adPkg)))
-        val m = ModulesMachine(h.cardsDeps(), backgroundScope, tv.id, pollMs = 1_000)
-        settle()
-        m.dispatch(ModulesIntent.Add("retro")); settle()
-        val doc = h.pushedDoc(h.planner.requests.filterIsInstance<PlanRequest.AddModule>().single().config)
-        assertEquals(5, doc.columns)
-        assertEquals(apps.take(15), doc.dockApps, "5 a row shows 15 of the 18")
-        assertEquals(false, doc.fillDock)
-        assertEquals(HomeChoice(apps, "aurora", cards = true, columns = 5), HomePrefs(h.documents).load(tv.id))
-    }
-
-    // look2: a saved choice in the new form is pushed in its own form, with module_cards on, and
-    // stays in the new form.
-    @Test fun theCardsPushSendsANewFormChoiceInItsOwnForm() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val apps = List(18) { PackageName("com.example.app$it") }
-        val (tv, _) = h.cardsOffTv(apps)
-        val choice = HomeChoice(apps, null, cards = false, picture = LookPicture.NONE_ID, columns = 5, style = "glass", movement = "smooth", lift = false,
-            names = true)
-        HomePrefs(h.documents).save(tv.id, choice)
-        h.respond(PlanKind.ADD_MODULE, listOf(Op.Disable(adPkg)))
-        val m = ModulesMachine(h.cardsDeps(), backgroundScope, tv.id, pollMs = 1_000)
-        settle()
-        m.dispatch(ModulesIntent.Add("retro")); settle()
-        val doc = h.pushedDoc(h.planner.requests.filterIsInstance<PlanRequest.AddModule>().single().config)
-        assertEquals(5, doc.columns)
-        assertEquals(apps.take(15), doc.dockApps)
-        assertEquals(true, doc.moduleCards)
-        assertEquals("true", doc.unknown["dock_glass"]?.toString(), "Glass's band")
-        assertEquals("true", doc.unknown["always_show_names"]?.toString())
-        assertEquals(choice.copy(cards = true), HomePrefs(h.documents).load(tv.id))
-    }
-
-    // A card module already on the TV while the cards are off: "Show its card" sends the look with
-    // module_cards on as an ApplyTheme plan, then mirrors the TV's question.
-    @Test fun showItsCardTurnsModuleCardsOnAndMirrorsTheQuestion() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val (tv, retro) = h.cardsOffTv(emptyList())
-        val m = ModulesMachine(h.cardsDeps(), backgroundScope, tv.id, pollMs = 1_000)
-        settle()
-        m.dispatch(ModulesIntent.ShowCard(retro.id)); settle()
-        val apply = h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().single()
-        assertEquals(true, apply.doc.moduleCards)
-        assertEquals(true, h.pushedDoc(apply.config).moduleCards)
-        assertEquals(retro.pkg.value, assertIs<InstallStep.Asking>(m.state.value.install).pkg)
-        assertEquals(true, HomePrefs(h.documents).load(tv.id)?.cards)
-        assertFalse(m.state.value.cardsOff)
-        assertNull(m.state.value.showing)
-    }
 
     // Existing TVs: a kept choice wins; without one, the TV's overlay decides when it says
     // module_cards outright, whoever wrote it; otherwise the caller's default (Setup off, Manage on).
@@ -875,174 +701,6 @@ class ManageMachinesTest {
         m.dispatch(TvSettingsIntent.Rename("  Lounge TV  ", "  Lounge ")); settle()
         assertEquals("Lounge TV", h.tvs.tvs.value.single().nickname)
         assertEquals("Lounge", h.tvs.tvs.value.single().room)
-    }
-
-    // D4 (RFC-LAUNCHER-1): "Update the home screen" is offered while the TV has an older build of
-    // ours, previews the plan from a fresh look at the TV, runs it, and pushes no look again: the
-    // dock and look stay on the TV through an in-place update.
-    @Test fun updateTheHomeScreenOffersPreviewsAndRunsInPlace() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val tv = h.knownTv().copy(launcher = LauncherState(2, Samples.zeroHash, null, null))
-        h.tvs.upsert(tv)
-        val pin = Samples.launcherArtifact().copy(versionCode = 5, versionName = "2.4")
-        fun launcher(vc: Long, signer: Sha256?) = PackageState(EnabledState.ENABLED, false, vc, signer, false, false, null, true)
-        fun snapWith(vc: Long, signer: Sha256?, at: Long = Samples.NOW_MS + 1) =
-            Samples.snapshot(packages = Samples.miTvPackages() + (pin.pkg to launcher(vc, signer)), takenAtMs = at)
-        h.snapshots.save(snapWith(2, Samples.zeroHash))
-        h.prober.snapshotFor = { snapWith(2, Samples.zeroHash, Samples.NOW_MS + 5) }
-        val updatePlan = h.plan(listOf(Op.InstallStream(pin.blob, pin.sha256, pin.pkg, 5, pin.signer)), kind = PlanKind.UPDATE_LAUNCHER, id = "01FAKEUPDA0000000000000001")
-        val previous = h.planner.respond
-        h.planner.respond = { r, s -> if (r is PlanRequest.UpdateLauncher) PlanResult.Ok(updatePlan) else previous(r, s) }
-        val deps = h.manageDeps(launcherPin = FakeLauncherPin(pin))
-        val m = HomeScreenMachine(deps, backgroundScope, tv.id)
-        settle()
-        assertEquals("2.4", m.state.value.updateTo)
-        assertFalse(m.state.value.tvSideSettings, "launcher 2.0 has no Launcher settings on the TV (RF-LAUNCHER-240 F16)")
-        m.dispatch(HomeScreenIntent.PreviewUpdate); settle()
-        assertEquals(updatePlan, m.state.value.updatePreview)
-        assertTrue(h.prober.calls.any { it == "snapshot ${SnapshotReason.MANUAL}" }, "the preview reads the TV afresh")
-        m.effects.test {
-            m.dispatch(HomeScreenIntent.UpdateHomeScreen)
-            settle()
-            val snack = assertIs<ManageEffect.Snackbar>(drain().single())
-            assertEquals(SnackKind.HOME_UPDATED, snack.kind)
-            assertEquals("2.4", snack.name)
-        }
-        assertEquals(pin, h.planner.requests.filterIsInstance<PlanRequest.UpdateLauncher>().last().launcher)
-        assertTrue(h.planner.requests.none { it is PlanRequest.ApplyTheme }, "the look is not pushed again")
-        assertNull(m.state.value.updatePreview)
-        assertNull(m.state.value.updateTo)
-        assertEquals(5L, h.tvs.tvs.value.single { it.id == tv.id }.launcher?.versionCode)
-
-        // Not offered: the pin itself, another key, or a key nobody knows.
-        for (snap in listOf(snapWith(5, Samples.zeroHash, Samples.NOW_MS + 10), snapWith(2, Sha256("e".repeat(64)), Samples.NOW_MS + 11))) {
-            h.snapshots.save(snap)
-            val state = HomeScreenMachine(deps, backgroundScope, tv.id).also { settle() }.state.value
-            assertNull(state.updateTo)
-            assertEquals(snap.packages.getValue(pin.pkg).versionCode >= 5, state.tvSideSettings)
-        }
-        h.tvs.upsert(tv.copy(launcher = null))
-        h.snapshots.save(snapWith(2, null, Samples.NOW_MS + 20))
-        assertNull(HomeScreenMachine(deps, backgroundScope, tv.id).also { settle() }.state.value.updateTo)
-        // An older snapshot without the signer, but Setup recorded our key for this TV: offered.
-        h.tvs.upsert(tv)
-        assertEquals("2.4", HomeScreenMachine(deps, backgroundScope, tv.id).also { settle() }.state.value.updateTo)
-    }
-
-    // 0.3.3 D2 (issue #3, Hisense 32A4200G): Setup blocked the home switch, so the new home screen was
-    // never installed. 0.3.2 still offered Dock and Look; DefaultPlanner.applyTheme refuses ApplyTheme
-    // without the launcher ("the new home screen is not installed"), TvWriter turned that into
-    // WriteResult.Refused and HomeScreenMachine.apply into SnackKind.FAILED, which the app shows as
-    // "We stopped". Now the screen says why, from the stored decision, and sends nothing.
-    @Test fun withoutTheNewHomeScreenTheScreenSaysWhyAndSendsNothing() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val tv = h.knownTv().copy(profileId = null).also { h.tvs.upsert(it) }   // the miTv snapshot has no com.gathin.tvhome
-        h.profiles.resolver = { _, _ -> ProfileResolution.None(emptyList()) }   // still no list for it
-        // Decided by this version with no list (beta3 writes both; one without is an earlier Setup's).
-        HomeDecisions(h.documents).save(tv.id, HomeDecision(false, "WIZARD_STAYS_ON", app = "0.2.0", profile = "none"))
-        val previous = h.planner.respond
-        h.planner.respond = { r, snap -> if (r is PlanRequest.ApplyTheme) PlanResult.Refused(listOf("the new home screen is not installed")) else previous(r, snap) }
-        val m = HomeScreenMachine(h.manageDeps(encoder = ConfigEncoder.Codec), backgroundScope, tv.id)
-        settle()
-        val n = assertNotNull(m.state.value.notOnTv)
-        assertEquals(HomeBlock.WIZARD_STAYS_ON, n.reason)
-        assertTrue(n.unlisted && n.helpAddTv)
-        assertFalse(n.setupAgain)
-        m.effects.test {
-            m.dispatch(HomeScreenIntent.SetTheme("aurora")); settle()
-            m.dispatch(HomeScreenIntent.SetDock(listOf(PackageName("com.netflix.ninja")))); settle()
-            m.dispatch(HomeScreenIntent.RestoreMine); settle()
-            assertTrue(drain().isEmpty(), "no We stopped, no write")
-        }
-        m.effects.test {
-            m.dispatch(HomeScreenIntent.RunSetupAgain); settle()
-            assertTrue(drain().isEmpty(), "Setup again is not the next step here")
-        }
-        m.effects.test {
-            m.dispatch(HomeScreenIntent.HelpAddTv); settle()
-            assertEquals(listOf<ManageEffect>(ManageEffect.Navigate("report/tv/${tv.id.value}")), drain())
-        }
-        assertTrue(h.planner.requests.none { it is PlanRequest.ApplyTheme })
-        // Manage's Home screen row says the TV keeps its own.
-        val manage = ManageMachine(h.manageDeps(), backgroundScope, tv.id)
-        settle()
-        assertTrue(assertNotNull(manage.state.value.current).ownHome)
-    }
-
-    // Issues #171, #187, #220: Setup left a launcher under our package name with another key as it is
-    // (HOME_CHANGED). Manage's Home screen says why, as for issue #8, and offers no dock or look for
-    // it. The same package with any other decision (ours, a planned switch) keeps the rows.
-    @Test fun issue171And187And220ALauncherUnderOurNameThatSetupLeftIsNotOffered() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val tv = h.knownTv().copy(launcher = null).also { h.tvs.upsert(it) }
-        val theirs = Issue034.launcherState(Issue034.otherSigner)
-        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + (Issue034.gathinHome.pkg to theirs), takenAtMs = Samples.NOW_MS + 30))
-        HomeDecisions(h.documents).save(tv.id, HomeDecision(false, "HOME_CHANGED"))
-        val n = assertNotNull(HomeScreenMachine(h.manageDeps(), backgroundScope, tv.id).also { settle() }.state.value.notOnTv)
-        assertEquals(HomeBlock.HOME_CHANGED, n.reason)
-        HomeDecisions(h.documents).save(tv.id, HomeDecision(true))
-        assertNull(HomeScreenMachine(h.manageDeps(), backgroundScope, tv.id).also { settle() }.state.value.notOnTv)
-        HomeDecisions(h.documents).save(tv.id, HomeDecision(false, alreadyOn = true))
-        assertNull(HomeScreenMachine(h.manageDeps(), backgroundScope, tv.id).also { settle() }.state.value.notOnTv)
-    }
-
-    // 0.3.3 D2: the reason and the next step for each stored decision. WIZARD_WIFI can change by
-    // forgetting and adding the network again only on a TV an exact profile knows; on an unlisted TV
-    // the wizard has to stay on anyway (HomeSwitchRisk), so the next step is a list.
-    @Test fun theReasonAndTheNextStepFollowTheStoredDecision() = runTest(timeout = 30.seconds) {
-        val h = Harness()
-        val listed = h.knownTv()   // exact profile xiaomi-mitv-axso0
-        // `decision` as this version (the harness's 0.2.0) made it with the list the TV resolves to now,
-        // unless `earlier`: then as a file from 0.4.6-beta2 or older (no app= line).
-        suspend fun notOnTv(given: HomeDecision?, profileId: String? = listed.profileId, earlier: Boolean = false): NotOnTv? {
-            val decision = if (earlier) given else given?.copy(app = "0.2.0", profile = profileId?.let { "exact $it" } ?: "none")
-            h.tvs.upsert(listed.copy(profileId = profileId))
-            // The list the TV resolves to now is the one the record kept (an earlier decision: below).
-            h.profiles.resolver = { _, all -> all.firstOrNull { it.id == profileId }?.let { ProfileResolution.Exact(it) } ?: ProfileResolution.None(emptyList()) }
-            if (decision != null) HomeDecisions(h.documents).save(listed.id, decision) else h.documents.delete("tvs/${listed.id.value}/decision.txt")
-            return HomeScreenMachine(h.manageDeps(), backgroundScope, listed.id).also { settle() }.state.value.notOnTv
-        }
-        assertEquals(NotOnTv(HomeBlock.WIZARD_WIFI, "Xiaomi", setupAgain = true), notOnTv(HomeDecision(false, "WIZARD_WIFI")))
-        assertEquals(NotOnTv(HomeBlock.WIZARD_WIFI, "Xiaomi", unlisted = true, helpAddTv = true), notOnTv(HomeDecision(false, "WIZARD_WIFI"), profileId = null))
-        assertEquals(NotOnTv(HomeBlock.WIZARD_WIFI_UNKNOWN, "Xiaomi", setupAgain = true), notOnTv(HomeDecision(false, "WIZARD_WIFI_UNKNOWN")))
-        assertEquals(NotOnTv(HomeBlock.UNKNOWN_HOME, "Xiaomi", unlisted = true, helpAddTv = true), notOnTv(HomeDecision(false, "UNKNOWN_HOME"), profileId = null))
-        assertEquals(NotOnTv(HomeBlock.UNKNOWN_HOME, "Xiaomi"), notOnTv(HomeDecision(false, "UNKNOWN_HOME")))
-        assertEquals(NotOnTv(HomeBlock.TV_REFUSES, "Xiaomi"), notOnTv(HomeDecision(false, "TV_REFUSES")))
-        assertEquals(NotOnTv(HomeBlock.OLD_ANDROID, "Xiaomi"), notOnTv(HomeDecision(false, "OLD_ANDROID")))
-        // Issue #8: the home screen was already changed; making the TV's own Home again is the person's
-        // choice, and on a TV with an exact list Setup then offers the switch.
-        assertEquals(NotOnTv(HomeBlock.HOME_CHANGED, "Xiaomi", setupAgain = true), notOnTv(HomeDecision(false, "HOME_CHANGED")))
-        assertEquals(NotOnTv(HomeBlock.HOME_CHANGED, "Xiaomi", unlisted = true), notOnTv(HomeDecision(false, "HOME_CHANGED"), profileId = null))
-        // beta3: another home screen app claims Home; with it removed, Setup can switch. No list is missing.
-        assertEquals(NotOnTv(HomeBlock.OTHER_HOME, "Xiaomi", unlisted = true, setupAgain = true), notOnTv(HomeDecision(false, "OTHER_HOME"), profileId = null))
-        // beta3 QA: a block kept by 0.4.6-beta2 or older (no app= line) is an earlier Setup's, on a TV
-        // with no list too: Run Setup again, not Help add this TV. The TV's own reasons keep theirs.
-        assertEquals(NotOnTv(HomeBlock.UNKNOWN_HOME, "Xiaomi", unlisted = true, setupAgain = true, earlier = true),
-            notOnTv(HomeDecision(false, "UNKNOWN_HOME"), profileId = null, earlier = true))
-        assertEquals(NotOnTv(HomeBlock.WIZARD_WIFI, "Xiaomi", setupAgain = true, earlier = true), notOnTv(HomeDecision(false, "WIZARD_WIFI"), earlier = true))
-        assertEquals(NotOnTv(HomeBlock.TV_REFUSES, "Xiaomi"), notOnTv(HomeDecision(false, "TV_REFUSES"), earlier = true))
-        assertEquals(NotOnTv(HomeBlock.HOME_CHANGED, "Xiaomi", unlisted = true), notOnTv(HomeDecision(false, "HOME_CHANGED"), profileId = null, earlier = true))
-        // Planned, but the launcher is gone since (removed): Setup again adds it. No decision (a TV set
-        // up before 0.3.2): the same.
-        assertEquals(NotOnTv(null, "Xiaomi", setupAgain = true), notOnTv(HomeDecision(true)))
-        assertEquals(NotOnTv(null, "Xiaomi", setupAgain = true), notOnTv(null))
-        val m = HomeScreenMachine(h.manageDeps(), backgroundScope, listed.id).also { settle() }
-        m.effects.test {
-            m.dispatch(HomeScreenIntent.RunSetupAgain); settle()
-            assertEquals(listOf<ManageEffect>(ManageEffect.Navigate("setup/${listed.id.value}")), drain())
-        }
-        // Fire TV is named for Fire OS, not the panel's brand (issue #2).
-        h.snapshots.save(Samples.snapshot(facts = Samples.miTvFacts().copy(brand = "Insignia", manufacturer = "Amazon"), takenAtMs = Samples.NOW_MS + 1))
-        assertEquals(NotOnTv(HomeBlock.TV_REFUSES, "Insignia", fireTv = true), notOnTv(HomeDecision(false, "TV_REFUSES")))
-        // The new home screen on the TV: Setup recorded it, or the newest snapshot lists it (installed,
-        // perhaps not the home screen now): the dock and the look are there as before.
-        h.tvs.upsert(listed.copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash)))
-        assertNull(HomeScreenMachine(h.manageDeps(), backgroundScope, listed.id).also { settle() }.state.value.notOnTv)
-        h.tvs.upsert(listed)
-        val ours = PackageState(EnabledState.ENABLED, false, 1, null, false, false, null, true)
-        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + (Launcher.pkg to ours), takenAtMs = Samples.NOW_MS + 2))
-        assertNull(HomeScreenMachine(h.manageDeps(), backgroundScope, listed.id).also { settle() }.state.value.notOnTv)
-        assertFalse(assertNotNull(ManageMachine(h.manageDeps(), backgroundScope, listed.id).also { settle() }.state.value.current).ownHome)
     }
 
     // 0.4.6: on a connect Manage reads the TV's Home again; with ours Home, the TV's own home screen

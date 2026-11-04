@@ -19,7 +19,6 @@ import tv.cleanyour.core.registry.FetchFailure
 import tv.cleanyour.core.registry.FetchResult
 import tv.cleanyour.core.registry.IndexState
 import tv.cleanyour.core.session.TvSession
-import tv.cleanyour.core.spec.DockLayers
 import tv.cleanyour.core.trust.IndexFailure
 
 // M3 Cards and modules, M3a Add, M3b detail, M3c the card prompt mirror (UX 5, D1, D6, D45, F9).
@@ -74,7 +73,6 @@ sealed interface ModulesIntent {
     data object CloseDetail : ModulesIntent
     data class Add(val id: String) : ModulesIntent
     data class Remove(val id: String) : ModulesIntent
-    data class ShowCard(val id: String) : ModulesIntent   // RFC-CARDS-1: turn the cards on for an installed module
     data class Update(val id: String) : ModulesIntent
     data object ConfirmUpdate : ModulesIntent
     data object SkipUpdate : ModulesIntent
@@ -129,7 +127,6 @@ class ModulesMachine(
             is ModulesIntent.Update -> if (addOns && !installing) scope.launch { update(event.id) }
             ModulesIntent.ConfirmUpdate -> if (addOns) before.consent?.let { c -> send(Consent(null)); scope.launch { install(c.moduleId) } }
             is ModulesIntent.Remove -> if (before.removing == null) scope.launch { remove(event.id) }
-            is ModulesIntent.ShowCard -> if (!installing && before.removing == null && before.showing == null) scope.launch { showCard(event.id) }
             is ModulesIntent.Answered -> answered(event.answer)
             ModulesIntent.DismissInstall -> detectJob?.cancel()
             else -> {}
@@ -179,36 +176,6 @@ class ModulesMachine(
     // RFC-CARDS-1: the look that turns this TV's module cards on, when they are off and the new home
     // screen is the TV's: the dock and theme this phone keeps for it, module_cards true. Null when
     // there is nothing to change (cards already on, or the TV's own home screen is in use).
-    private suspend fun cardsOnLook(overlay: ByteArray?): Pair<Look, HomeChoice>? {
-        val tv = d.tv(tvId) ?: return null
-        if (tv.launcher == null) return null
-        val choice = d.homePrefs.load(tvId)
-        if (Cards.current(d, tvId, choice, overlay)) return null
-        // look2: a choice in the new form is pushed in its own form, on this TV.
-        if (choice?.isNew == true) {
-            val snap = d.snapshots.latest(tvId)
-            val packages = snap?.packages.orEmpty()
-            val liveTv = d.profileOf(tv)?.liveTv
-            val lookTv = LookTv(packages[Launcher.pkg]?.versionCode, snap?.facts?.ramMb?.takeIf { it > 0 },
-                snap == null || snap.hdmi.isNotEmpty() || liveTv?.let { it in packages } == true)
-            val drafts = LookDrafts(d.themes, d.pictures, d.encoder, d.clock)
-            val (doc, wallpaper) = drafts.docOf(choice, choice.dock, cards = true, OwnPicture.ref(d, tvId), lookTv)
-            return Look.encode(d.encoder, d.blobs, LookCarry.of(d, tvId)(doc), wallpaper) to choice.copy(dock = DockLayers.keep(choice.dock), cards = true)
-        }
-        // 0.4.0: once a dated look has ended, the look before it (HomeChoice.lookOn).
-        val theme = choice?.lookOn(d.clock.today())?.let { id -> d.themes.bundled().firstOrNull { it.id == id } }
-        // 0.4.0: with the person's apps in a row, and the whole saved order kept (DockLayers.keep),
-        // not only the part the TV shows.
-        val look = Look.encode(d.encoder, d.blobs, theme, choice?.dock.orEmpty(), cards = true, OwnPicture.lookPicture(d, tvId, choice?.picture, choice?.dim),
-            choice?.columns, LookCarry.of(d, tvId), fillDock = choice?.dockChosen != true)
-        return look to (choice ?: HomeChoice(emptyList(), null)).withTheme(theme?.id, DockLayers.keep(choice?.dock.orEmpty()), cards = true)
-    }
-
-    private suspend fun keepCardsOn(pushed: Pair<Look, HomeChoice>) {
-        d.homePrefs.save(tvId, pushed.second)
-        rememberPushedLook(d, tvId, pushed.first.digest)
-    }
-
     // UX 5.4: new permissions in an update need consent again.
     private suspend fun update(id: String) {
         val m = module(id) ?: return
@@ -242,12 +209,9 @@ class ModulesMachine(
             return send(Step(InstallStep.Failed(m.name, FetchFailure.SIGNER_MISMATCH)))
         }
         send(Step(InstallStep.Installing(0)))
-        var cardsOn: Pair<Look, HomeChoice>? = null
         val outcome = attempt {
             val snapshot = d.runner.snapshotFor(tv, session)
-            // RFC-CARDS-1: adding a card is the person asking for cards, so the same plan turns them on.
-            cardsOn = cardsOnLook(snapshot.launcherOverlay)
-            val request = PlanRequest.AddModule(m, v, blob, cardsOn?.first?.config, cardsOn?.first?.wallpaper)
+            val request = PlanRequest.AddModule(m, v, blob)
             val plan = (d.runner.plan(tv, request, snapshot) as? PlanResult.Ok)?.plan ?: return@attempt null
             d.openWrites.remember(plan.id, request)
             d.runner.run(tv, plan, session, pass, onStarted = { d.sessionEnd.touched(tvId) }) { s -> if (s is RunState.Running) send(Step(InstallStep.Installing(s.percent))) }
@@ -256,7 +220,6 @@ class ModulesMachine(
         if (outcome is RunOutcome.Paused) { TvWriter(d).publish(tv, outcome.state); return send(Step(null)) }
         if (outcome is RunOutcome.StartRefused && outcome.refusal == StartRefusal.RUN_OPEN && TvWriter(d).openRun(tv, session) != null) return send(Step(null))
         if (outcome !is RunOutcome.Finished) return send(Step(InstallStep.Failed(m.name, null)))
-        cardsOn?.let { keepCardsOn(it) }
         attempt { d.snapshots.save(d.runner.freshSnapshot(session)) }
         d.restorePoint.write(tv, session, d.profileOf(tv))
         load()
@@ -266,25 +229,6 @@ class ModulesMachine(
     // RFC-CARDS-1: an installed module whose card waits because the TV's cards are off. The look with
     // module_cards on goes to the TV as an ApplyTheme plan; the launcher's restart finds the card
     // and asks on the TV, and the phone mirrors that question as after an add.
-    private suspend fun showCard(id: String) {
-        val m = module(id) ?: return
-        val tv = d.tv(tvId) ?: return
-        val pushed = attempt { cardsOnLook(null) }.getOrNull() ?: return load()
-        send(Showing(id))
-        val r = TvWriter(d).write(tvId, PlanRequest.ApplyTheme(pushed.first.doc, pushed.first.config, pushed.first.wallpaper))
-        send(Showing(null))
-        if (r !is WriteResult.Done) {
-            // Paused: the open-run card (O2); cancelled: nothing changed, nothing to say.
-            if (r !is WriteResult.GateCancelled && r !is WriteResult.NoTv && r !is WriteResult.Paused) effect(ManageEffect.Snackbar(SnackKind.FAILED, "", false))
-            return
-        }
-        keepCardsOn(pushed)
-        load()
-        val session = d.access.live(tvId) ?: return
-        val signer = d.snapshots.latest(tvId)?.packages?.get(m.pkg)?.signer ?: bestVersion(m, tv)?.artifact?.signer ?: return
-        ask(m.name, m.pkg, keyDigest12(signer), session)
-    }
-
     // M3c: the launcher asks on the TV; the phone mirrors the prompt with the same 12 hex (D1).
     private fun ask(name: String, pkg: PackageName, key12: String, session: TvSession) {
         send(Step(InstallStep.Asking(name, pkg.value, key12)))

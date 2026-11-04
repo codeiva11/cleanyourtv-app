@@ -97,9 +97,6 @@ sealed interface UpdateCheck {
 data class AppSettingsState(
     val version: String = "",
     val prefs: AppPrefsValue = AppPrefsValue(),
-    val launcherPkg: String = "",
-    val launcherVersion: String = "",
-    val launcherDigest: String = "",
     val keyBacking: String = "",
     val keyFingerprint: String = "",
     val update: UpdateCheck = UpdateCheck.Idle,
@@ -147,11 +144,8 @@ class AppSettingsMachine(
 
     init {
         scope.launch {
-            val pin = attempt { d.launcherPin.bundled() }.getOrNull()
             send(Loaded(AppSettingsState(
                 version = d.appVersion, prefs = d.appPrefs.load(),
-                launcherPkg = pin?.pkg?.value.orEmpty(), launcherVersion = pin?.versionName.orEmpty(),
-                launcherDigest = pin?.let { keyDigest12(it.sha256) }.orEmpty(),
                 keyBacking = attempt { d.keyInfo.backing }.getOrDefault(""), keyFingerprint = attempt { d.keyInfo.fingerprint }.getOrDefault(""),
                 updateCheck = d.store.updateCheck, addOns = d.store.addOns,
             )))

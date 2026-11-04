@@ -50,11 +50,8 @@ include(":ui:design")
 include(":feature:connect")
 include(":feature:setup")
 include(":feature:manage")
-include(":feature:launcher")
 include(":feature:modules")
 include(":feature:backup")
 include(":app")
 include(":benchmark")
 
-// The TV curtain (RFC-CURTAIN-1): a TV app of its own, bundled into :android:platform as a signed asset
-include(":tv:curtain")

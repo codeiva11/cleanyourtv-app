@@ -5,19 +5,14 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import tv.cleanyour.core.model.BlobRef
-import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.Prior
 import tv.cleanyour.core.model.RunToken
 import tv.cleanyour.core.model.SettingKey
 import tv.cleanyour.core.ops.HelperLines
-import tv.cleanyour.core.planner.Choices
 import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.Plan
-import tv.cleanyour.core.planner.PlanRequest
-import tv.cleanyour.core.planner.WizardWifi
-import tv.cleanyour.core.spec.ProfileResolution
 import tv.cleanyour.testing.fixtures.Samples
 import tv.cleanyour.testing.fixtures.sha256Of
 import kotlin.test.Test
@@ -37,9 +32,7 @@ class HelperSectionTest {
         val bytes = "{\n  \"stock_home_redirect\": \"com.google.android.tvlauncher\",\n  \"key_filter\": false\n}\n".encodeToByteArray()
         val sha = sha256Of(bytes)
         tv.blobs[sha] = bytes
-        val planner = DefaultPlanner(clock, idGen, renderer, transport, "0.4.8", homeHelper = true)
-        return plan(PlanRequest.Setup(ProfileResolution.Exact(profile()), Choices(emptySet(), emptySet(), null, null, true, false, false, false,
-            wizardWifi = WizardWifi.NOT_OWNER, homeHelper = true), artifact, Level.SIMPLE, config = BlobRef(sha, bytes.size.toLong(), "blob:config")), planner)
+        return storedHelperPlan(BlobRef(sha, bytes.size.toLong(), "blob:config"))
     }
 
     // The helper, once bound, sends the TV's own home screen on to ours.

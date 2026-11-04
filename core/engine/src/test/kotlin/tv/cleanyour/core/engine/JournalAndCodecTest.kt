@@ -8,7 +8,6 @@ import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.Prior
 import tv.cleanyour.core.model.RunToken
 import tv.cleanyour.core.model.Sha256
-import tv.cleanyour.core.model.TvId
 import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.core.planner.Plan
 import tv.cleanyour.testing.fixtures.Samples

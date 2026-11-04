@@ -310,9 +310,6 @@ class TvReportTest {
             store.save(tvId, d)
             assertEquals(d, store.load(tvId))
         }
-        assertEquals("home switch planned", HomeDecision.of(HomeBlock.NONE, planHasSwitch = true, alreadyOn = false).line)
-        assertEquals("home switch blocked TV_REFUSES", HomeDecision.of(HomeBlock.TV_REFUSES, planHasSwitch = false, alreadyOn = false).line)
-        assertEquals("home switch not in the plan", HomeDecision.of(HomeBlock.NONE, planHasSwitch = false, alreadyOn = false).line)
     }
 
     // 0.4.7-beta2: 141 reports since 0.4.6.1 said "App: [address] (full)": a four-part hotfix version

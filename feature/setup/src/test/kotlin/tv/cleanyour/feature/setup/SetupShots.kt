@@ -1,28 +1,9 @@
 package tv.cleanyour.feature.setup
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import tv.cleanyour.core.flows.HomeChoice
-import tv.cleanyour.core.flows.LookReason
-import tv.cleanyour.core.flows.LookRow
-import tv.cleanyour.core.flows.LookRows
-import tv.cleanyour.core.flows.LookSample
-import tv.cleanyour.core.flows.LookSamples
-import tv.cleanyour.core.flows.LookTv
-import tv.cleanyour.core.flows.StyleCard
-import tv.cleanyour.core.spec.LookKeys
-import tv.cleanyour.core.spec.Movement
-import tv.cleanyour.core.spec.StyleId
-import tv.cleanyour.ui.design.component.LookEditorNav
-import tv.cleanyour.ui.design.component.LookPage
-import tv.cleanyour.ui.design.component.SheetSurface
-import tv.cleanyour.ui.design.theme.CytTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,26 +11,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.io.ByteArrayOutputStream
-import java.time.LocalDate
 import tv.cleanyour.core.engine.NarrationLine
 import tv.cleanyour.core.engine.NarrationState
 import tv.cleanyour.core.engine.RunState
-import tv.cleanyour.core.flows.AppChoice
 import tv.cleanyour.core.flows.ChipState
 import tv.cleanyour.core.flows.DoneSummary
-import tv.cleanyour.core.flows.HomeBlock
-import tv.cleanyour.core.flows.HomeKept
-import tv.cleanyour.core.flows.HomeRole
-import tv.cleanyour.core.flows.LookDocs
-import tv.cleanyour.core.flows.LookDraft
-import tv.cleanyour.core.flows.LookPicture
-import tv.cleanyour.core.flows.LookPreview
-import tv.cleanyour.core.flows.PictureOption
 import tv.cleanyour.core.flows.Finishing
 import tv.cleanyour.core.flows.NoSetupActions
 import tv.cleanyour.core.flows.NothingWhy
@@ -60,8 +29,6 @@ import tv.cleanyour.core.flows.SetupExtras
 import tv.cleanyour.core.flows.SetupState
 import tv.cleanyour.core.flows.StopCard
 import tv.cleanyour.core.flows.StopCase
-import tv.cleanyour.core.flows.ThemeOption
-import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.RunToken
@@ -72,11 +39,7 @@ import tv.cleanyour.core.planner.Plan
 import tv.cleanyour.core.planner.PlanSummary
 import tv.cleanyour.core.planner.RowSummary
 import tv.cleanyour.core.probe.ProbeStage
-import tv.cleanyour.core.spec.BundledThemeSource
-import tv.cleanyour.core.spec.DockLayers
-import tv.cleanyour.core.spec.LauncherConfigCodec
 import tv.cleanyour.testing.fixtures.Samples
-import tv.cleanyour.ui.design.component.PhotoPicker
 import tv.cleanyour.ui.design.component.UndoSnackbar
 import tv.cleanyour.ui.design.component.rememberUndoSnackbarState
 
@@ -129,10 +92,7 @@ private val extrasGroup = GroupSummary("brand", "Xiaomi extras", off = 2, total 
     row("com.xiaomi.mitv.smartshare", "Mi Smart Share", "Casting from Xiaomi phones"),
 ))
 private val keepNames = listOf("Netflix", "YouTube", "Prime Video")
-private val dock = listOf("Netflix", "YouTube", "Prime Video", "Live TV")
-
-private fun summary(groups: List<GroupSummary>, home: Boolean = true) =
-    PlanSummary(groups, keepNames, dock, homeScreenPossible = home, replacesLauncher = false)
+private fun summary(groups: List<GroupSummary>) = PlanSummary(groups, keepNames)
 
 private fun plan(summary: PlanSummary): Plan = Samples.plan(emptyList()).copy(summary = summary)
 
@@ -157,56 +117,21 @@ private val homeSwitchCommands = listOf(
     "pm disable-user --user 0 com.google.android.tvlauncher",
     "cmd package set-home-activity com.gathin.tvhome/.MainActivity",
 )
-private val homeSwitchOnlyPlan = plan(summary(listOf(homeSwitchGroup)).copy(dock = emptyList()))
+private val homeSwitchOnlyPlan = plan(summary(listOf(homeSwitchGroup)))
 // RFC-CURTAIN-1: the same plan with the TV curtain, as "Show commands" lists it: the curtain's install,
 // its start, one am broadcast per cue, and its removal last.
-private fun cue(stage: String, count: Int = 0, total: Int = 0) =
-    "am broadcast -n tv.cleanyour.curtain/.CueReceiver -a tv.cleanyour.curtain.CUE --es token 3f9c0a17d2e4b856 --es stage $stage --es group NONE --ei count $count --ei total $total --ei gcount 0 --ei gtotal 0 --receiver-foreground"
-private val curtainCommands = listOf(
-    "sync:bundled:cleanyourtv-curtain.apk 49571",
-    "am start -n tv.cleanyour.curtain/.CurtainActivity",
-    cue("SCAN"), cue("RESTORE_SAVED"), cue("INSTALL"),
-    "sync:bundled:cleanyourtv-launcher.apk 270885",
-    cue("INSTALLED"), cue("FINALE"),
-    CONFIG_SYNC,
-    "pm disable-user --user 0 com.google.android.tvlauncher",
-    "cmd package set-home-activity com.gathin.tvhome/.MainActivity",
-    "pm uninstall --user 0 tv.cleanyour.curtain",
-)
 private val noHomePlan = plan(summary(listOf(
     GroupSummary("ads", "Adverts and sponsored rows", off = 6, total = 6, rows = emptyList()),
     GroupSummary("tracking", "Tracking and analytics", off = 7, total = 7, rows = emptyList()),
     GroupSummary("nobody", "Apps nobody asked for", off = 3, total = 3, rows = emptyList()),
-), home = false))
+)))
 // 0.4.7: the Google TV Streamer's plan as the planner summarises it when the TV keeps its own home
 // screen (CASTING): its profile's home group lists the setup wizard and the home screen as protected
 // rows, with the planner's own reasons, which the sheet replaces by role (HomeRole).
-private val keptHomeGroup = GroupSummary("home", "Home screen", off = 0, total = 2, rows = listOf(
-    row("com.google.android.tungsten.setupwraith", "Google TV setup wizard", "The first-run setup", off = false, protectedRow = true,
-        why = "the first-run setup wizard is only switched off as part of the home screen switch"),
-    row("com.google.android.apps.tv.launcherx", "Google TV home", "Google TV's own home screen", off = false, protectedRow = true,
-        why = "it is the TV's own home screen; only the home screen switch changes it"),
-))
-private val keptPlan = plan(summary(listOf(
-    trackingGroup.copy(rows = trackingGroup.rows + row("com.google.android.tv.remote.service", "Remote usage logging", "Logs what the remote does", off = false)), extrasGroup.copy(title = "Google extras"), keptHomeGroup,
-), home = false).copy(keepNames = listOf("Netflix", "YouTube")))
-private val keptExtras = SetupExtras(tvName = "Google TV Streamer", chip = ChipState.CONNECTED, brand = "Google", homePossible = false, homeBlock = HomeBlock.CASTING,
-    commands = listOf("pm disable-user --user 0 com.xiaomi.analytics", "pm disable-user --user 0 com.alphonso.tv"),
-    draft = WizardDraft(3, Level.SIMPLE, emptySet(), emptySet(), null, null, false, null, NOW),
-    homeRoles = mapOf(PackageName("com.google.android.tungsten.setupwraith") to HomeRole.WIZARD, PackageName("com.google.android.apps.tv.launcherx") to HomeRole.OWN_HOME))
-
 private val section = GuardedSection("home", 0, 0, RunToken("0123456789abcdef"), confirmWindowMs = 90_000,
     expectedHome = Samples.launcherComponent, rollbackIfFocus = emptySet(), rollback = emptyList())
 private val longSection = section.copy(confirmWindowMs = 120_000)
 
-private fun app(pkg: String, name: String) = AppChoice(PackageName(pkg), name)
-private val dockApps = listOf(app("com.netflix.ninja", "Netflix"), app("com.google.android.youtube.tv", "YouTube"),
-    app("com.amazon.amazonvideo.livingroom", "Prime Video"), app("com.droidlogic.tvinput", "Live TV"))
-private val otherApps = listOf(app("com.spotify.tv.android", "Spotify"), app("com.plexapp.android", "Plex"), app("org.videolan.vlc", "VLC"))
-private val themes = listOf(
-    ThemeOption("aurora", "Aurora", "A deep blue background with a soft glow behind the apps."),
-    ThemeOption("six", "Six columns", "Six apps across, so more fit on the screen."),
-)
 private val commands = listOf(
     "pm disable-user --user 0 com.mitv.tvhome.atv",
     "pm disable-user --user 0 com.glance.tv",
@@ -218,105 +143,9 @@ private val connected = SetupExtras(tvName = "Mi TV 4A", chip = ChipState.CONNEC
 private val working = SetupExtras(tvName = "Mi TV 4A", chip = ChipState.WORKING)
 private val offline = SetupExtras(tvName = "Mi TV 4A", chip = ChipState.OFFLINE)
 private val customising = connected.copy(
-    dock = dockApps, apps = dockApps + otherApps, themes = themes, commands = commands,
-    draft = WizardDraft(3, Level.SIMPLE, emptySet(), emptySet(), null, null, false, null, NOW),
+    commands = commands,
+    draft = WizardDraft(3, Level.SIMPLE, emptySet(), emptySet(), false, null, NOW),
 )
-
-// 0.4.0 look step (RFC-LOOK-SETUP-1): the Look editor as SetupMachine fills it. The previews are
-// made as the machine makes them, from the bytes the push would send for the bundled looks
-// (LookDocs, so fill_dock false and the apps in a row are in them), with their real pictures read
-// from the :core:spec resources.
-private val bundledLooks = BundledThemeSource().bundled().associateBy { it.id }
-private val gallery = BundledThemeSource().pictures().associateBy { it.id }
-private fun resourcePath(ref: BlobRef?) = ref?.path?.removePrefix(BundledThemeSource.PREFIX)?.let { "/$it" }
-private val pictureFiles: Map<String, ImageBitmap> by lazy {
-    (bundledLooks.values.map { it.wallpaper } + gallery.values.map { it.wallpaper }).mapNotNull { resourcePath(it) }.distinct().associateWith { path ->
-        BitmapFactory.decodeStream(SetupShots::class.java.getResourceAsStream(path), null, BitmapFactory.Options().apply { inSampleSize = 4 })!!.asImageBitmap()
-    }
-}
-// A photo made in the look step stands in as Mist's own picture file.
-private val newPhoto = BlobRef(Samples.zeroHash, 1, resourcePath(bundledLooks.getValue("mist").wallpaper)!!)
-private fun lookPreview(id: String, picture: LookPicture.Of?, columns: Int?, dock: List<AppChoice>): LookPreview {
-    val (doc, wallpaper) = LookDocs.of(bundledLooks.getValue(id), dock.map { it.pkg }, cards = true, picture, columns)
-    val p = LookPreview.of(LauncherConfigCodec.encode(doc), null, dock.map { it.name }, LocalDate.of(2026, 10, 25), 21 * 60 + 5)
-    return p.copy(picturePath = if (doc.wallpaper != false) wallpaper?.path?.let { it.removePrefix(BundledThemeSource.PREFIX).let { r -> if (r.startsWith("/")) r else "/$r" } } else null)
-}
-// The step's draft as SetupMachine makes it: the look's own apps in a row unless `columns`.
-private fun lookDraft(id: String, picture: String? = null, columns: Int? = null, dock: List<AppChoice> = dockApps): LookDraft {
-    val own = DockLayers.columnsOf(bundledLooks.getValue(id).doc)
-    val p = when (picture) {
-        null, LookPicture.NONE_ID -> null
-        LookPicture.NEW_ID -> LookPicture.Of(newPhoto, 40)
-        else -> LookPicture.Of(gallery.getValue(picture).wallpaper)
-    }
-    val preview = if (picture == LookPicture.NONE_ID) lookPreview(id, null, columns, dock).copy(picturePath = null) else lookPreview(id, p, columns, dock)
-    return LookDraft(id, picture, false, preview, columns ?: own, own)
-}
-private fun lookStep(draft: LookDraft, dock: List<AppChoice> = dockApps, waiting: Int = 0, themeId: String = draft.themeId) = customising.copy(
-    themes = bundledLooks.values.map { ThemeOption(it.id, it.name, it.description, resourcePath(it.wallpaper)) },
-    pictures = gallery.values.map { PictureOption(it.id, it.name, resourcePath(it.wallpaper)) },
-    look = draft, dock = dock, waiting = waiting,
-    draft = customising.draft?.copy(themeId = themeId, columns = draft.columns.takeIf { it != draft.lookColumns }, picture = draft.picture),
-)
-
-// look2 look step: the same Look editor as the Look sheet, with Done. The previews come from the
-// bytes the push would send (LookSamples); the rows are written out here (a fake in test sources).
-private val lookSource = BundledThemeSource()
-private fun look2Preview(style: StyleId, picture: String, columns: Int = 5, extras: tv.cleanyour.core.spec.LookExtras = tv.cleanyour.core.spec.LookExtras.DEFAULT): LookPreview {
-    val choice = HomeChoice(dockApps.map { it.pkg }, null, cards = false, picture = picture, columns = columns, style = style.id, movement = Movement.LIVELY.id,
-        extras = extras)
-    val p = LookSamples.preview(LookSample("setup", choice, choice.dock, LookTv(if (extras == tv.cleanyour.core.spec.LookExtras.DEFAULT) 8L else 9L, 2048, false)), lookSource, lookSource, LocalDate.of(2026, 10, 26), 20 * 60 + 30)
-    return p.copy(picturePath = gallery[picture]?.let { resourcePath(it.wallpaper) }, dock = dockApps.map { it.name })
-}
-private fun look2Rows(style: StyleId, picture: String): LookRows {
-    val own = LookKeys.own(style)
-    return LookRows(
-        names = LookRow(false, true), bigName = LookRow(own.bigName, true), glow = LookRow(own.glow, true),
-        spotColour = LookRow(false, false, visible = false), ring = LookRow(own.ring, true), band = LookRow(own.band, true),
-        buttons = LookRow(own.buttons, true), greenWifi = LookRow(own.greenWifi, true),
-        dim = if (picture == LookPicture.NONE_ID) LookRow(0, false, LookReason.NO_PICTURE) else LookRow(0, true), sky = LookRow(false, true),
-        lift = LookRow(false, true), seeThrough = LookRow(50, false, LookReason.SEE_THROUGH_OFF), skyStrength = LookRow(55, false, LookReason.SKY_OFF),
-        resettable = 0, festiveRing = false, liftSlowRamMb = null,
-    )
-}
-private fun look2Draft(style: StyleId = StyleId.CLASSIC, picture: String = "mist", columns: Int = 5, newPhoto: Boolean = false, waiting: Int = 0,
-    oneRow: Boolean? = null) = LookDraft(
-    "default", picture,
-    // oneRow: a TV that reads 3.0, with Every app in one row as given (the preview from the bytes the push writes).
-    preview = look2Preview(style, if (newPhoto) "mist" else picture, columns, tv.cleanyour.core.spec.LookExtras(oneRow = oneRow == true)),
-    columns = columns, lookColumns = columns, style = style,
-    reads30 = oneRow != null, extras = tv.cleanyour.core.spec.LookExtras(oneRow = oneRow == true),
-    // What acts and what could act (LookRules.extras): one row on every style with a dock, the band's None
-    // not on Spotlight, the internet warnings only with Green Wi-Fi (off in these rows).
-    actingExtras = tv.cleanyour.core.spec.LookExtras(oneRow = oneRow == true && style != StyleId.ALL_APPS).takeIf { oneRow != null }
-        ?: tv.cleanyour.core.spec.LookExtras.DEFAULT,
-    offeredExtras = if (oneRow == null) tv.cleanyour.core.spec.LookExtras.DEFAULT else tv.cleanyour.core.spec.LookExtras(
-        oneRow = style != StyleId.ALL_APPS, noBand = style != StyleId.ALL_APPS && style != StyleId.SPOTLIGHT, hideGreeting = true, dateBelow = true,
-        brightDate = true, tiles = tv.cleanyour.core.spec.TilesChoice.ICONS, highlight = tv.cleanyour.core.spec.HighlightChoice.RIM),
-    styleCards = StyleId.entries.map { StyleCard(it, look2Preview(it, if (newPhoto) "mist" else picture, columns), true) },
-    rows = look2Rows(style, picture), newPhoto = newPhoto, settingsFile = "{\n  \"columns\": $columns\n}", apps = dockApps.size + waiting, waiting = waiting,
-)
-private fun look2Step(draft: LookDraft) = customising.copy(
-    pictures = gallery.values.map { PictureOption(it.id, it.name, resourcePath(it.wallpaper), it.until, it.backgroundArgb) }, look = draft, dock = dockApps,
-)
-
-// The look step's sheet with a bounded height, as the modal sheet gives it.
-@Composable
-private fun LookFrame(behind: @Composable () -> Unit, page: LookPage = LookPage.MAIN, content: @Composable ColumnScope.(LookEditorNav) -> Unit) {
-    val nav = remember { LookEditorNav().apply { open(page) } }
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().clearAndSetSemantics {}) { behind() }
-        Box(Modifier.fillMaxSize().background(CytTheme.colors.scrim))
-        SheetSurface(Modifier.align(Alignment.BottomCenter).padding(top = 48.dp)) { content(nav) }
-    }
-}
-
-// The dock sheet's state as DockSheet makes it (remembered, so it survives recomposition).
-@Composable
-private fun dockState(apps: List<AppChoice>, addRow: Boolean = false) =
-    remember { tv.cleanyour.ui.design.component.DockEditorState(apps.map { it.toDockApp() }, 4).apply { if (addRow) addRow() } }
-
-private val rowsPlan = plan(summary(listOf(adsGroup, trackingGroup, nobodyGroup, extrasGroup)).copy(dock = dock + listOf("Spotify", "Plex")))
 
 private fun found(plan: Plan = fullPlan, level: Level = Level.SIMPLE) = SetupState.Found(tvId, plan, level, sheet = null)
 
@@ -326,7 +155,7 @@ private fun runningNoSwitch(lines: List<NarrationLine>, percent: Int, thumbnail:
     SetupState.Working(tvId, RunState.Running(noHomePlan, step = 3, narration = lines, percent = percent, thumbnail = thumbnail), thumbnail)
 
 private fun checkState(thumbnail: ByteArray?, deadlineAheadMs: Long = 84_000, homeCheck: Boolean? = null, s: GuardedSection = section) =
-    SetupState.Check(tvId, RunState.AwaitingConfirm(fullPlan, s, NOW + deadlineAheadMs, homeCheck, thumbnail), thumbnail, dock)
+    SetupState.Check(tvId, RunState.AwaitingConfirm(fullPlan, s, NOW + deadlineAheadMs, homeCheck, thumbnail), thumbnail)
 
 private fun done(off: Int = 23, home: Boolean = true, skipped: List<String> = emptyList(), recommended: Boolean = false, restart: RestartState? = null,
                  restoreEarlier: Boolean = false) =
@@ -395,55 +224,26 @@ object SetupShots {
         Shot("found_simple") { Setup(found()) },
         Shot("found_zero") { Setup(found(zeroPlan)) },
         // Emulator run: a TV with no app to suggest for the dock; the row names the new home screen.
-        Shot("found_zero_empty_dock") { Setup(found(zeroPlan.copy(summary = zeroPlan.summary.copy(dock = emptyList())))) },
         Shot("found_unknown_model") { Setup(found(unknownPlan), connected.copy(unknownModel = true)) },
         Shot("found_unknown_home_switch_only") { Setup(found(homeSwitchOnlyPlan), connected.copy(unknownModel = true)) },
         Shot("found_no_screen_lock") { Setup(found(), connected.copy(noScreenLock = true)) },
         // 0.4.7 (HomeKept): the TV keeps its own home screen; the outcome row sits under the headline
         // with the short reason and Why. UX finding 12: the brand from the TV's facts, not its nickname.
-        Shot("found_tv_refuses_home") { Setup(found(noHomePlan), connected.copy(tvName = "Bedroom", brand = "TCL", homePossible = false, homeBlock = HomeBlock.TV_REFUSES)) },
         // Issue #2: a Fire TV Edition set is named for Fire OS.
-        Shot("found_home_fire_tv") { Setup(found(noHomePlan), connected.copy(tvName = "Insignia Fire TV", brand = "Insignia", fireTv = true, homePossible = false, homeBlock = HomeBlock.TV_REFUSES)) },
         // RF-PROFILES-63 P1 and P2: Android 7 (the clean-up only), and a profile with no known stock home.
-        Shot("found_home_old_android") { Setup(found(noHomePlan), connected.copy(tvName = "Sony KD-55X8509C", homePossible = false, homeBlock = HomeBlock.OLD_ANDROID)) },
-        Shot("found_home_unknown_stock") { Setup(found(noHomePlan), connected.copy(tvName = "Mi TV ASTP1", homePossible = false, homeBlock = HomeBlock.UNKNOWN_HOME)) },
         // Issue #8: Home answers to a launcher the person installed; the TV's own home screen is off.
-        Shot("found_home_changed") { Setup(found(noHomePlan), connected.copy(tvName = "TCL Smart TV", homePossible = false, homeBlock = HomeBlock.HOME_CHANGED)) },
         // beta3 (issue #1119): another home screen app claims Home where the switch could go ahead.
-        Shot("found_home_other_home") { Setup(found(noHomePlan), connected.copy(tvName = "Xiaomi MiTV4I", homePossible = false, homeBlock = HomeBlock.OTHER_HOME)) },
         // beta4 (issue #825): a system service's FallbackHome claims Home where the switch could go ahead.
-        Shot("found_home_vendor_home") { Setup(found(noHomePlan), connected.copy(tvName = "THOMSON SPPL 2K ANDROID TV", homePossible = false, homeBlock = HomeBlock.VENDOR_HOME)) },
         // beta4 (issue #945): PatchWall stays on while its feeds are off, not by this app.
-        Shot("found_home_patchwall_feeds") { Setup(found(noHomePlan), connected.copy(tvName = "Xiaomi MiTV-AXSO2", homePossible = false, homeBlock = HomeBlock.PATCHWALL_FEEDS)) },
         // The Google TV Streamer (CASTING): the outcome, the casting reason, and the Why sheet.
-        Shot("found_home_casting") { Setup(found(noHomePlan), connected.copy(tvName = "Google TV Streamer", brand = "Google", homePossible = false, homeBlock = HomeBlock.CASTING)) },
-        Shot("found_why_kept_sheet") {
-            SheetFrame({ Setup(found(noHomePlan), connected.copy(tvName = "Google TV Streamer", brand = "Google", homePossible = false, homeBlock = HomeBlock.CASTING)) }, maxHeight = 560.dp) {
-                WhyKeptContent(HomeKept.Blocked(HomeBlock.CASTING, brand = "Google"))
-            }
-        },
         // An unlisted TV whose setup wizard has to stay on: a list is what would change it.
-        Shot("found_why_kept_sheet_list") {
-            SheetFrame({ Setup(found(noHomePlan), connected.copy(tvName = "Hisense 32A4200G", brand = "Hisense", unknownModel = true, homePossible = false, homeBlock = HomeBlock.WIZARD_STAYS_ON)) }, maxHeight = 600.dp) {
-                WhyKeptContent(HomeKept.Blocked(HomeBlock.WIZARD_STAYS_ON, brand = "Hisense", unlisted = true), onHelpAddTv = {})
-            }
-        },
         // UX finding 5, PM 7: nothing to switch off on a kept TV: Done, no "Make it clean"; an unlisted
         // TV offers Help add this TV, and says when its report was sent (SentReports).
-        Shot("found_zero_kept") { Setup(found(zeroPlan.copy(summary = zeroPlan.summary.copy(homeScreenPossible = false))), connected.copy(tvName = "Sony KD-55X8509C", homePossible = false, homeBlock = HomeBlock.OLD_ANDROID)) },
-        Shot("found_zero_kept_unknown") {
-            Setup(found(zeroPlan.copy(summary = zeroPlan.summary.copy(homeScreenPossible = false))),
-                connected.copy(tvName = "Hisense 32A4200G", brand = "Hisense", unknownModel = true, homePossible = false, homeBlock = HomeBlock.WIZARD_STAYS_ON, reportSentAtMs = NOW - 86_400_000))
-        },
         Shot("found_starting") { Setup(found(), connected.copy(starting = true)) },
         // D36 (RF-LAUNCHER-240 F1): the plan replaces a home screen app signed with another key.
-        Shot("found_replaces_launcher") { Setup(found(fullPlan.copy(summary = fullPlan.summary.copy(replacesLauncher = true)))) },
         // Issue #275: a TCL Google TV, whose remote's gear, Netflix and YouTube buttons need Google TV's home.
-        Shot("found_tcl_remote_keys") { Setup(found(), connected.copy(tvName = "TCL 55C755", tclRemoteKeys = true)) },
         // RFC-HELPER-1 (test build): the Home button helper chosen on a casting TV: the redirect's outcome, never "keeps its own".
         // #251: a Google TV cleaned before, nothing left to switch off: Customise still offers the helper.
-        Shot("found_zero_kept_helper_offer") { Setup(found(zeroPlan.copy(summary = zeroPlan.summary.copy(homeScreenPossible = false))), connected.copy(tvName = "Google TV Streamer", brand = "Google", homePossible = false, homeBlock = HomeBlock.WIZARD_STAYS_ON, helperOffer = true)) },
-        Shot("found_helper") { Setup(found(), connected.copy(tvName = "Google TV Streamer", brand = "Google", homePossible = false, homeBlock = HomeBlock.CASTING, helperOffer = true, helperOn = true)) },
 
         // S3a Customise: Simple with the other groups collapsed; Custom with every group open, the
         // package names and the undo snackbar; the "Why?" sheet
@@ -451,15 +251,10 @@ object SetupShots {
             SheetFrame({ Setup(found()) }) { CustomiseContent(found(), customising, NoSetupActions, rememberUndoSnackbarState(), {}, {}) }
         },
         // A dock with a row under it: "Dock: Netflix, ... plus 2 apps in the row below", the groups closed.
-        Shot("customise_sheet_dock_rows") {
-            SheetFrame({ Setup(found(rowsPlan)) }) {
-                CustomiseContent(found(rowsPlan), customising.copy(dock = dockApps + otherApps.take(2)), NoSetupActions, rememberUndoSnackbarState(), {}, {}, initiallyOpen = emptyList())
-            }
-        },
         Shot("customise_sheet_custom") {
             Box(Modifier.fillMaxSize()) {
                 SheetFrame({ Setup(found(level = Level.CUSTOM)) }) {
-                    CustomiseContent(found(level = Level.CUSTOM), customising.copy(draft = customising.draft?.copy(keepDebuggingOn = true, themeId = "aurora")),
+                    CustomiseContent(found(level = Level.CUSTOM), connected.copy(commands = commands, draft = WizardDraft(3, Level.CUSTOM, emptySet(), emptySet(), true, null, NOW)),
                         NoSetupActions, rememberUndoSnackbarState(), {}, {}, initiallyOpen = listOf("ads", "tracking", "nobody", "brand"))
                 }
                 // The undo snackbar after "Mi TV+ promos" was tapped (S3a), as the sheet shows it.
@@ -470,69 +265,16 @@ object SetupShots {
         // The home screen switch's own switch-off: shown Off with no pill to flip, counted in "1 of 1 off".
         Shot("customise_sheet_home_switch") {
             SheetFrame({ Setup(found(homeSwitchOnlyPlan)) }) {
-                CustomiseContent(found(homeSwitchOnlyPlan), customising.copy(dock = emptyList(), commands = homeSwitchCommands), NoSetupActions, rememberUndoSnackbarState(), {}, {})
+                CustomiseContent(found(homeSwitchOnlyPlan), connected.copy(commands = homeSwitchCommands), NoSetupActions, rememberUndoSnackbarState(), {}, {})
             }
         },
         // RFC-CURTAIN-1: Custom shows "Show the progress on the TV" (on by default) and the cue lines.
-        Shot("customise_sheet_curtain") {
-            SheetFrame({ Setup(found(homeSwitchOnlyPlan, level = Level.CUSTOM)) }) {
-                CustomiseContent(found(homeSwitchOnlyPlan, level = Level.CUSTOM), customising.copy(dock = emptyList(), commands = curtainCommands),
-                    NoSetupActions, rememberUndoSnackbarState(), {}, {}, initiallyOpen = emptyList())
-            }
-        },
         Shot("customise_why_sheet") { SheetFrame({ Setup(found()) }, maxHeight = 360.dp) { WhyContent(found()) } },
         // 0.4.7 (UX findings 1, 3): the Google TV Streamer keeps its own home screen: the outcome card
         // replaces the Home screen group, and its wizard and home screen rows say they stay.
-        Shot("customise_sheet_kept", 1100.dp) {
-            SheetFrame({ Setup(found(keptPlan), keptExtras) }, maxHeight = 1080.dp) {
-                CustomiseContent(found(keptPlan), keptExtras, NoSetupActions, rememberUndoSnackbarState(), {}, {}, initiallyOpen = emptyList())
-            }
-        },
-        Shot("customise_why_sheet_kept") { SheetFrame({ Setup(found(keptPlan), keptExtras) }, maxHeight = 420.dp) { WhyContent(found(keptPlan), keptExtras) } },
         // RFC-HELPER-1 (test build): Customise's Home button helper, switched on, and its consent.
         // 0.4.7: a plan of switch-offs and the look only (the helper plan has no "Needed for the new home screen" group and no set-home-activity).
-        Shot("customise_sheet_helper", 1300.dp) {
-            SheetFrame({ Setup(found()) }, maxHeight = 1280.dp) {
-                CustomiseContent(found(), customising.copy(commands = commands.dropLast(1), helperOffer = true, helperOn = true),
-                    NoSetupActions, rememberUndoSnackbarState(), {}, {}, initiallyOpen = emptyList())
-            }
-        },
-        Shot("customise_helper_consent") { SheetFrame({ Setup(found()) }) { HomeHelperConsent({}, {}) } },
 
-        // S3b Your dock, with room and full; the look picker
-        Shot("dock_sheet") { SheetFrame({ Setup(found()) }) { DockContent(dockState(dockApps.take(3)), dockApps + otherApps, {}) } },
-        Shot("dock_sheet_full") { SheetFrame({ Setup(found()) }) { DockContent(dockState(dockApps), dockApps + otherApps, {}) } },
-        // An empty dock: no "Dock" heading over nothing, the apps to add straight away.
-        Shot("dock_sheet_empty") { SheetFrame({ Setup(found(homeSwitchOnlyPlan)) }) { DockContent(dockState(emptyList()), otherApps, {}) } },
-        // The dock with a row under it, and a row just added and still empty.
-        Shot("dock_sheet_rows") { SheetFrame({ Setup(found()) }) { DockContent(dockState(dockApps + otherApps.take(2)), dockApps + otherApps, {}) } },
-        Shot("dock_sheet_new_row") { SheetFrame({ Setup(found()) }) { DockContent(dockState(dockApps, addRow = true), dockApps + otherApps, {}) } },
-        // look2 look step: the same pages as the Look sheet after Setup, with Done as the footer.
-        // Classic with Mist and "Choose a photo"; More options; a photo made here ("New photo")
-        // next to the one kept for the TV ("Your photo").
-        Shot("theme_sheet", 1100.dp) {
-            LookFrame({ Setup(found()) }) { nav -> ThemeContent(look2Step(look2Draft()), NoSetupActions, PhotoPicker {}, pictureFiles, nav = nav) }
-        },
-        // Home screen 3.0 (0.4.5): the same step on a TV that reads 3.0, with Every app in one row on.
-        Shot("theme_sheet_30", 1300.dp) {
-            LookFrame({ Setup(found()) }) { nav -> ThemeContent(look2Step(look2Draft(oneRow = true)), NoSetupActions, PhotoPicker {}, pictureFiles, nav = nav) }
-        },
-        Shot("theme_sheet_more", 1700.dp) {
-            LookFrame({ Setup(found()) }, LookPage.MORE) { nav -> ThemeContent(look2Step(look2Draft(StyleId.GLASS)), NoSetupActions, PhotoPicker {}, pictureFiles, nav = nav) }
-        },
-        Shot("theme_sheet_photo", 1100.dp) {
-            LookFrame({ Setup(found()) }) { nav ->
-                ThemeContent(look2Step(look2Draft(picture = LookPicture.NEW_ID, newPhoto = true, waiting = 3)).copy(
-                    ownPicture = BlobRef(Samples.zeroHash, 1, resourcePath(gallery.getValue("glass").wallpaper)!!), newPicture = newPhoto, newDim = 40),
-                    NoSetupActions, PhotoPicker {}, pictureFiles, nav = nav)
-            }
-        },
-        // The Customise row names the look and its apps in a row when that is not the look's own.
-        Shot("customise_sheet_look_count", 1300.dp) {
-            SheetFrame({ Setup(found()) }, maxHeight = 1280.dp) {
-                CustomiseContent(found(), lookStep(lookDraft("console", "glass", columns = 6)), NoSetupActions, rememberUndoSnackbarState(), {}, {}, initiallyOpen = emptyList())
-            }
-        },
 
         // S4a Making it clean
         Shot("working_58") { Setup(running(narration, 58, remember { fakeShot() }), working) },
@@ -658,15 +400,9 @@ object SetupShots {
         Shot("done_without_home") { Setup(done(off = 16, home = false)) },
         // 0.4.7 (UX findings 6, 7, 9): the TV keeps its own home screen: "Clean-up done", the outcome in
         // the lead with Why, no card to add, and after the restart "Home screen is the TV's own".
-        Shot("done_home_kept") { Setup(done(off = 16, home = false), connected.copy(homePossible = false, homeBlock = HomeBlock.CASTING, brand = "Google", tvName = "Google TV Streamer")) },
-        Shot("done_home_kept_back_after_restart") {
-            Setup(done(off = 16, home = false, restart = RestartState.Back(72_000)), connected.copy(homePossible = false, homeBlock = HomeBlock.WIZARD_STAYS_ON, unknownModel = true, tvName = "Hisense 32A4200G", brand = "Hisense"))
-        },
         // UX finding 18: the switch held but the look did not reach the TV.
         Shot("done_look_failed") { Setup(done(), connected.copy(doneLookFailed = true)) },
         // RFC-HELPER-1 (test build): Done after the Home button helper, and after a restart.
-        Shot("done_helper") { Setup(done(), connected.copy(homePossible = false, homeBlock = HomeBlock.CASTING, helperOn = true)) },
-        Shot("done_helper_back_after_restart") { Setup(done(restart = RestartState.Back(72_000)), connected.copy(homePossible = false, homeBlock = HomeBlock.CASTING, helperOn = true)) },
         Shot("done_skipped_one") { Setup(done(off = 22, skipped = listOf("Play Games"))) },
         Shot("done_skipped_many") { Setup(done(off = 20, skipped = listOf("Play Games", "Mi Cast", "Mi Home"))) },
         // Issue #15: nothing to switch off and no home switch, on a TV we know and on one we don't.
@@ -682,7 +418,6 @@ object SetupShots {
         Shot("done_restart_held", 1100.dp) { Setup(done(restart = RestartState.Back(72_000)), connected.copy(restartRead = RestartRead.HELD)) },
         Shot("done_restart_failed", 1100.dp) { Setup(done(restart = RestartState.Back(72_000)), connected.copy(restartRead = RestartRead.FAILED)) },
         // 0.4.8 (PLAN item 3): "This is your TV now" after Setup sent the look.
-        Shot("done_tv_now", 1300.dp) { Setup(done(), connected.copy(doneShot = remember { fakeShot() })) },
         Shot("done_not_back") {
             val c = card(StopCase.NOT_BACK_AFTER_RESTART, R.string.stop_not_back_title, R.string.stop_not_back_body, R.string.stop_not_back_primary, R.string.stop_not_back_secondary)
             Setup(done(restart = RestartState.NotBack(300_000)), offline.copy(card = c.copy(body = c.body + "\n\n" + stringResource(R.string.stop_not_back_auto))))

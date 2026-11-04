@@ -44,19 +44,13 @@ data class Tv(val id: TvId, val nickname: String, val room: String?, val facts: 
 enum class Level { SIMPLE, CUSTOM }
 enum class DebugState { ON, OFF, UNKNOWN }   // R0: 16; what the Manage chip shows (D7), set from the last connect or debug_off
 data class LauncherState(val versionCode: Long, val signer: Sha256, val overlayDigest: Sha256?, val ourOverlayDigest: Sha256?)
-// R0: 2 was referenced and never declared; persisted on every committed choice (ARCHITECTURE 2.2); W8 may add fields, never remove
+// R0: 2 was referenced and never declared; persisted on every committed choice (ARCHITECTURE 2.2); W8 may add fields, never remove.
+// Stock-only 2026-11-04 (docs/history/STOCK-ONLY.md): the look/dock/curtain/helper fields are gone
+// with the launcher; REA's two switches remain, off by default until the Customise toggles land.
 data class WizardDraft(val step: Int, val level: Level, val kept: Set<PackageName>, val extraOff: Set<PackageName>,
-    val dock: List<PackageName>?, val themeId: String?, val keepDebuggingOn: Boolean, val planId: PlanId?, val updatedAtMs: Long,
-    val curtain: Boolean = true,   // RFC-CURTAIN-1: "Show the progress on the TV" (Custom only; Simple always shows it)
-    // 0.4.0 (RFC-LOOK-SETUP-1): the look step's apps in a row, only when it differs from the look's
-    // own (4 to 8, null for the look's own), and its picture (HomeChoice.picture: null for the look's
-    // own, "none", "mine", "new" or a gallery id).
-    val columns: Int? = null, val picture: String? = null,
-    // look2: the look step's choice in home.txt line form (HomePrefs), null before the look step made
-    // one; themeId, columns and picture stay for the legacy (0.4.0) form.
-    val look: String? = null,
-    // RFC-HELPER-1 (test build): the Customise switch "Home button helper", after its consent.
-    val homeHelper: Boolean = false)
+    val keepDebuggingOn: Boolean, val planId: PlanId?, val updatedAtMs: Long,
+    val cleanStockHome: Boolean = false,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
+    val autoDebloat: Boolean = false)   // REA Autonomous Deep RAM Debloat
 
 sealed interface ConnectionState {
     data object Idle : ConnectionState

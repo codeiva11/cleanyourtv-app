@@ -126,9 +126,8 @@ class Promotions045SafetyTest {
     @Test fun sonyBraviaVu3() {
         val pr = defaultsPass("sony-bravia-vu3")
         keeps("sony-bravia-vu3", "com.android.tv", "com.realtek.tv.passthrough", "com.sony.dtv.smartui", "com.realtek.advancesetting")
-        // The clean-up only: the remote's app buttons go through launcherx, and only the switch would
-        // touch launcherx or the setup wizard (and with it casting).
-        assertTrue(pr.id in HomeSwitchRisk.REMOTE_BUTTON_PROFILES)
+        // The clean-up only: the remote's app buttons go through launcherx, so neither launcherx
+        // nor the setup wizard is ever switched off.
         for (s in listOf("com.google.android.apps.tv.launcherx", "com.google.android.tungsten.setupwraith")) assertTrue(p(s) !in defaultOff("sony-bravia-vu3"), s)
     }
 }
