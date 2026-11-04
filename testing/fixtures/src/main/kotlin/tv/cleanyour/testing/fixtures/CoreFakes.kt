@@ -44,6 +44,7 @@ class FakeProber(
     @Volatile var freeMb: Int = 900,
     @Volatile var refusesInstall: Boolean = false,
     @Volatile var bootIdValue: String = "fake-boot-1",
+    @Volatile var ramByPackageValue: Map<PackageName, Int> = emptyMap(),
 ) : Prober {
     val fileHashes = ConcurrentHashMap<String, Sha256>()
     val installedHashes = ConcurrentHashMap<PackageName, Sha256>()
@@ -65,6 +66,7 @@ class FakeProber(
     override suspend fun installRefusal(session: TvSession, noopApk: BlobRef): Boolean { calls += "installRefusal"; return refusesInstall }
     override suspend fun watchdogAlive(session: TvSession, token: RunToken): Boolean { calls += "watchdogAlive"; return token in liveWatchdogs }
     override suspend fun bootId(session: TvSession): String { calls += "bootId"; return bootIdValue }
+    override suspend fun ramByPackage(session: TvSession): Map<PackageName, Int> { calls += "ramByPackage"; return ramByPackageValue }
 }
 
 // Profiles from a list; resolve() is an exact model match, else None with no stock launchers.

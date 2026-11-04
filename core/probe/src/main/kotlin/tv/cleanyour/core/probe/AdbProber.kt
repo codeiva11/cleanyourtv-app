@@ -241,6 +241,23 @@ class AdbProber(
         return if (SHA256_RE.matches(h)) Sha256(h) else null
     }
 
+    override suspend fun ramByPackage(session: TvSession): Map<PackageName, Int> {
+        val r = run(session, ProbeScripts.PS_RSS, ProbeStage.FACTS, 1024 * 1024)
+        val out = LinkedHashMap<PackageName, Long>()
+        for (line in lines(r.stdout)) {
+            val t = line.trim()
+            if (t.isEmpty()) continue
+            val parts = t.split(Regex("\\s+"), limit = 2)
+            if (parts.size < 2) continue
+            val rssKb = parts[0].toLongOrNull() ?: continue   // the header line ("RSS ...") lands here
+            val proc = parts[1].substringBefore(' ').substringBefore(':')
+            if (!PACKAGE_RE.matches(proc)) continue   // native daemons, paths, bare names: not a package
+            val pkg = PackageName(proc)
+            out[pkg] = (out[pkg] ?: 0L) + rssKb
+        }
+        return out.mapValues { (_, kb) -> kb.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt() }
+    }
+
     override suspend fun freeDataMb(session: TvSession): Int {
         val r = run(session, ProbeScripts.FREE_DATA, ProbeStage.FACTS, 16 * 1024)
         val row = lines(r.stdout).map { it.trim().split(Regex("\\s+")) }.lastOrNull { it.size >= 6 && it.last() == "/data" }

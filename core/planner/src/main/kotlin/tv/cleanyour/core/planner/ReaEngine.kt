@@ -76,7 +76,8 @@ object ReaEngine {
     fun findDebloatCandidates(
         snapshot: Snapshot,
         factsTable: FactsTable,
-        stockLaunchers: List<Component>
+        stockLaunchers: List<Component>,
+        ramByPackage: Map<PackageName, Int> = emptyMap()
     ): List<Candidate> {
         val candidates = mutableListOf<Candidate>()
         val stockPkgs = stockLaunchers.map { it.pkg }.toSet()
@@ -101,7 +102,7 @@ object ReaEngine {
                         friendlyName = facts.friendlyName,
                         description = facts.description,
                         category = facts.category,
-                        estimatedRamMb = estimateRam(pkg.value)
+                        estimatedRamMb = ramMb(pkg, ramByPackage)
                     )
                     continue
                 }
@@ -114,7 +115,7 @@ object ReaEngine {
                     friendlyName = formatName(pkg.value),
                     description = "Ad and recommendation provider eating TV RAM",
                     category = "ads",
-                    estimatedRamMb = estimateRam(pkg.value)
+                    estimatedRamMb = ramMb(pkg, ramByPackage)
                 )
                 continue
             }
@@ -125,7 +126,7 @@ object ReaEngine {
                     friendlyName = formatName(pkg.value),
                     description = "Background telemetry and tracking service",
                     category = "telemetry",
-                    estimatedRamMb = estimateRam(pkg.value)
+                    estimatedRamMb = ramMb(pkg, ramByPackage)
                 )
                 continue
             }
@@ -136,13 +137,16 @@ object ReaEngine {
                     friendlyName = formatName(pkg.value),
                     description = "Preloaded manufacturer bloatware",
                     category = "bloat",
-                    estimatedRamMb = estimateRam(pkg.value)
+                    estimatedRamMb = ramMb(pkg, ramByPackage)
                 )
                 continue
             }
         }
 
-        return candidates.distinctBy { it.pkg }.sortedBy { it.pkg.value }
+        // Heaviest first, so the worst RAM hogs sit at the top of their group; the name
+        // breaks ties, so the order is stable when nothing is measured.
+        return candidates.distinctBy { it.pkg }
+            .sortedWith(compareByDescending<Candidate> { it.estimatedRamMb }.thenBy { it.pkg.value })
     }
 
     /**
@@ -209,6 +213,12 @@ object ReaEngine {
 
         return ops
     }
+
+    // RFC-RAM-1: measured RSS (KB) beats the name-guess; a package that is not running
+    // (absent from the map) keeps the guess. RSS counts shared pages per process, so the
+    // sum ranks heavy apps but is never an exact "uses X MB" claim.
+    private fun ramMb(pkg: PackageName, ramByPackage: Map<PackageName, Int>): Int =
+        ramByPackage[pkg]?.let { (it / 1024).coerceAtLeast(1) } ?: estimateRam(pkg.value)
 
     private fun estimateRam(pkg: String): Int = when {
         pkg.contains("recommendation") -> 55

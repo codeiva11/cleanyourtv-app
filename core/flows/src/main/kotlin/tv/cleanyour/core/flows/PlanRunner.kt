@@ -6,6 +6,7 @@ import tv.cleanyour.core.engine.Engine
 import tv.cleanyour.core.engine.RunState
 import tv.cleanyour.core.engine.StartRefusal
 import tv.cleanyour.core.engine.StartResult
+import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.model.SnapshotReason
 import tv.cleanyour.core.model.Tv
@@ -56,6 +57,15 @@ class PlanRunner(
     // A fresh snapshot, for re-planning after the TV changed under a run (STALE) or after a run.
     suspend fun freshSnapshot(session: TvSession): Snapshot =
         prober.snapshot(session, SnapshotReason.MANUAL).also { snapshots.save(it) }
+
+    // Best-effort per-app RAM (RFC-RAM-1): one quick `ps` read. A firmware without the RSS
+    // column, or a lost session, yields an empty map and the REA falls back to its guess —
+    // the plan itself must never fail because a ranking input could not be read.
+    suspend fun ramByPackage(session: TvSession): Map<PackageName, Int> = try {
+        prober.ramByPackage(session)
+    } catch (e: Exception) {
+        emptyMap()
+    }
 
     suspend fun plan(tv: Tv, request: PlanRequest, snapshot: Snapshot): PlanResult =
         planner.plan(request, snapshot, facts, ledger.changes(tv.id))

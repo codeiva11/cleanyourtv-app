@@ -332,6 +332,7 @@ class ScriptedProber(private val tv: ScriptedTv) : Prober {
     override suspend fun installRefusal(session: TvSession, noopApk: BlobRef): Boolean = false
     override suspend fun watchdogAlive(session: TvSession, token: RunToken): Boolean = token.value in tv.watchdogs
     override suspend fun bootId(session: TvSession): String = "boot-1"
+    override suspend fun ramByPackage(session: TvSession): Map<PackageName, Int> { calls += "ramByPackage"; return emptyMap() }
 }
 
 // The probe's own fixed lines, so the scripted session logs them like any other command.

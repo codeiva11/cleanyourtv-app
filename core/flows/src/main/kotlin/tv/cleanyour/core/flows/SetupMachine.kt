@@ -726,7 +726,8 @@ class SetupMachine(
             keepDebuggingOn = draft.keepDebuggingOn,
             cleanStockHome = draft.cleanStockHome, autoDebloat = draft.autoDebloat, uninstallBloat = draft.uninstallBloat,
         )
-        when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices), snap)) {
+        val ram = deps.runner.ramByPackage(s)
+        when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices, ramByPackage = ram), snap)) {
             is PlanResult.Ok -> {
                 setupPlan = r.plan
                 deps.log.line("setup: plan ready, ${r.plan.steps.size} steps, ${r.plan.steps.count { it.op is Op.Disable || it.op is Op.Uninstall }} to switch off or uninstall, " +

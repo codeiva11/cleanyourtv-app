@@ -125,6 +125,14 @@ class DefaultPlanner(
             val cost = ProfileCategory.OWNERS_CHOICE[pkg] ?: return what
             return if (what.isEmpty()) cost else "$what. $cost"
         }
+
+        // RFC-RAM-1: a running app's row says "about X MB in RAM" when we measured it.
+        // RSS over-counts shared pages, so the number is approximate by design and says so.
+        fun ramNote(pkg: PackageName, base: String, ramByPackage: Map<PackageName, Int>): String {
+            val kb = ramByPackage[pkg] ?: return base
+            val note = "about ${kb / 1024} MB in RAM"
+            return if (base.isEmpty()) note.replaceFirstChar { it.titlecase() } else "$base · $note"
+        }
         // An uninstall's line on the progress screen. The old home screen app (an earlier build's
         // install, removed by Undo) has no label on the TV, so AppNames would make its name from
         // the package ("Gathin Home", QA 0.4.5-beta1).
@@ -232,7 +240,7 @@ class DefaultPlanner(
             // when the TV has a profile — its groups join the profile's, profile rows first, so the
             // profile wins a package both know (the `covered` set skips the REA row for it).
             val packageGroups: List<PackageGroup> = rawPackageGroups + if (choices.autoDebloat || choices.cleanStockHome) {
-                val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers)
+                val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers, ramByPackage = req.ramByPackage)
                 ReaEngine.synthesizeReaGroups(candidates)
             } else {
                 emptyList()
@@ -265,7 +273,7 @@ class DefaultPlanner(
                     // The same for a PatchWall feed that is off already: the plan leaves it as it is.
                     if ((why == null || why == REASON_UPDATES || why == REASON_PATCHWALL_FEED) && isOff(pkg)) continue
                     val off = why == null && wanted
-                    rows += RowSummary(pkg, name(pkg), description(pkg), off, why != null, why)
+                    rows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), req.ramByPackage), off, why != null, why)
                     if (off) { switchOff(pkg, group.id, choices.uninstallBloat); disabled++ }
                 }
                 groups += GroupSummary(group.id, group.title, rows.count { it.off }, rows.size, rows)
@@ -278,7 +286,7 @@ class DefaultPlanner(
                 val why = protectedReason(pkg, profile, stockLaunchers, packageGroups) ?: feedReason(pkg)
                 if (why != null) { refuse("${name(pkg)} cannot be switched off: $why"); continue }
                 if (isOff(pkg)) continue
-                custom += RowSummary(pkg, name(pkg), description(pkg), off = true, protected = false, whyProtected = null)
+                custom += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), req.ramByPackage), off = true, protected = false, whyProtected = null)
                 switchOff(pkg, GROUP_CUSTOM, choices.uninstallBloat); disabled++
             }
             if (custom.isNotEmpty()) groups += GroupSummary(GROUP_CUSTOM, "Also switched off", custom.size, custom.size, custom)
@@ -296,14 +304,14 @@ class DefaultPlanner(
             keepNames = choices.kept.filter { installed(it) }.map { name(it) }.sorted()
 
             if (choices.cleanStockHome && ReaEngine.isStockGoogleTvLauncher(snapshot)) {
-                cleanStockHome(stockLaunchers, choices.uninstallBloat)
+                cleanStockHome(stockLaunchers, choices.uninstallBloat, req.ramByPackage)
             }
         }
 
-        fun cleanStockHome(stockLaunchers: List<Component>, uninstallBloat: Boolean) {
+        fun cleanStockHome(stockLaunchers: List<Component>, uninstallBloat: Boolean, ramByPackage: Map<PackageName, Int> = emptyMap()) {
             val stockRows = mutableListOf<RowSummary>()
             if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS) && !isOff(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
-                stockRows += RowSummary(ReaEngine.STOCK_TV_RECOMMENDATIONS, name(ReaEngine.STOCK_TV_RECOMMENDATIONS), description(ReaEngine.STOCK_TV_RECOMMENDATIONS), off = true, protected = false, whyProtected = null)
+                stockRows += RowSummary(ReaEngine.STOCK_TV_RECOMMENDATIONS, name(ReaEngine.STOCK_TV_RECOMMENDATIONS), ramNote(ReaEngine.STOCK_TV_RECOMMENDATIONS, description(ReaEngine.STOCK_TV_RECOMMENDATIONS), ramByPackage), off = true, protected = false, whyProtected = null)
                 if (uninstallBloat && snapshot.packages[ReaEngine.STOCK_TV_RECOMMENDATIONS]?.system == true) {
                     uninstall(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Uninstalling TV recommendations ad provider")
                 } else {

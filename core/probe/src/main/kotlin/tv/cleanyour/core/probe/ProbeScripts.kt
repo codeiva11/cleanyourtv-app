@@ -70,6 +70,7 @@ object ProbeScripts {
     val NOOP_UNINSTALL = ShellLine("pm uninstall ${NOOP_PACKAGE.value}")
     val NOOP_CLEANUP = ShellLine("rm -f ${RemoteDir.TMP.path}/$NOOP_FILE")
     val PS_ARGS = ShellLine("ps -A -o ARGS")
+    val PS_RSS = ShellLine("ps -A -o RSS,ARGS")
 
     // Launcher v2.4.0's guard (tools/disable.sh): who saved each Wi-Fi network. Only fixed words leave
     // the TV (SavedWifi): the cname= owners, WifiConfigManager's list markers and "ID: <n> SSID" per
@@ -110,6 +111,7 @@ object ProbeScripts {
         "HOME_RESOLVED" to HOME_RESOLVED, "LAUNCHABLE" to LAUNCHABLE, "INPUTS" to INPUTS, "SETTINGS" to SETTINGS, "HOME_FOCUS" to HOME_FOCUS, "BOOT_ID" to BOOT_ID,
         "FREE_DATA" to FREE_DATA, "SCREENSHOT" to SCREENSHOT, "SCREENSHOT_CLEANUP" to SCREENSHOT_CLEANUP, "MKDIR_TMP" to MKDIR_TMP,
         "NOOP_INSTALL" to NOOP_INSTALL, "NOOP_UNINSTALL" to NOOP_UNINSTALL, "NOOP_CLEANUP" to NOOP_CLEANUP, "PS_ARGS" to PS_ARGS,
+        "PS_RSS" to PS_RSS,
         "WIFI_OWNERS" to WIFI_OWNERS,
     )
 }

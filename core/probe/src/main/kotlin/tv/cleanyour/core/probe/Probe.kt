@@ -17,6 +17,13 @@ interface Prober {
     suspend fun fileSha256(session: TvSession, path: RemotePath): Sha256?
     suspend fun installedSha256(session: TvSession, pkg: PackageName): Sha256?
     suspend fun freeDataMb(session: TvSession): Int
+    // RFC-RAM-1 (2026-11-04, fork): per-app RAM from `ps -A -o RSS,ARGS`, summed per package
+    // (process names are `package` or `package:process`; the `:suffix` is stripped). RSS counts
+    // shared pages once per process, so a summed per-app RSS over-counts shared libraries: it
+    // ranks heavy apps reliably and is never an exact "uses X MB" claim — callers say "about".
+    // Best-effort: a firmware without the RSS column yields an empty map and the REA falls back
+    // to its name-based guess.
+    suspend fun ramByPackage(session: TvSession): Map<PackageName, Int>   // RSS in KB per package
     suspend fun installRefusal(session: TvSession, noopApk: BlobRef): Boolean
     suspend fun watchdogAlive(session: TvSession, token: RunToken): Boolean
     suspend fun bootId(session: TvSession): String }

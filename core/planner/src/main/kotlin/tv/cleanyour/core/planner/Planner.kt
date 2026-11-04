@@ -20,7 +20,10 @@ data class Choices(val kept: Set<PackageName>, val extraOff: Set<PackageName>, v
 enum class PlanKind { SETUP, PUT_BACK, SWITCH_OFF, LEFTOVERS, ADD_MODULE, REMOVE_MODULE, USE_STOCK_HOME,
     UNDO_EVERYTHING, BEFORE_FACTORY_RESET, DEBUG_OFF, WRITE_RESTORE_POINT, REBOOT }   // R0: 11 (was kind: String); REBOOT: RFC-W8-5
 sealed interface PlanRequest {
-    data class Setup(val resolution: ProfileResolution, val choices: Choices) : PlanRequest
+    // RFC-RAM-1 (2026-11-04, fork): Setup carries the measured per-app RAM (RSS KB, from
+    // Prober.ramByPackage) so the planner's REA can rank real heavy apps instead of guessing
+    // from the package name. Empty when the probe could not run; the REA then uses its guess.
+    data class Setup(val resolution: ProfileResolution, val choices: Choices, val ramByPackage: Map<PackageName, Int> = emptyMap()) : PlanRequest
     data class PutBack(val pkg: PackageName) : PlanRequest
     data class SwitchOff(val pkgs: Set<PackageName>) : PlanRequest
     data class Leftovers(val expectedDisabled: Set<PackageName>) : PlanRequest
