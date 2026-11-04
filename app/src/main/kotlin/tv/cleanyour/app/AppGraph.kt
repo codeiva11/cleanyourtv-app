@@ -30,6 +30,7 @@ import tv.cleanyour.core.flows.AppAbout
 import tv.cleanyour.core.flows.AppPrefs
 import tv.cleanyour.core.flows.AppSettingsMachine
 import tv.cleanyour.core.flows.CardAnswerDetector
+import tv.cleanyour.core.flows.ConfigEncoder
 import tv.cleanyour.core.flows.DocumentTvRepository
 import tv.cleanyour.core.flows.GateKeeper
 import tv.cleanyour.core.flows.HomeDecisions
