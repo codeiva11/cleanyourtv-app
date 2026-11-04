@@ -21,6 +21,7 @@ import tv.cleanyour.core.model.Tier
 import kotlinx.coroutines.runBlocking
 import tv.cleanyour.core.ops.Denylist
 import tv.cleanyour.core.ops.FailurePolicy
+import tv.cleanyour.core.ops.HelperLines
 import tv.cleanyour.core.ops.HomePlaceholder
 import tv.cleanyour.core.ops.OpRenderer
 import tv.cleanyour.core.ops.RenderRefused
@@ -448,6 +449,22 @@ class DefaultPlanner(
             var clearedLook = false
             for (c in order) {
                 when (val t = UndoOrder.target(c.op)) {
+                    // Undo-only helper removal: the helper itself is gone with the launcher
+                    // removal, but a stored 0.4.7 plan may still have switched it on, so
+                    // Undo everything still switches it back off (was helperOut in HEAD).
+                    is UndoOrder.Target.Helper -> {
+                        val list = accList
+                        if (c.op !is Op.AccessibilityAdd || !HelperLines.listed(list) || list == null) continue
+                        if (!SettingKey.ENABLED_ACCESSIBILITY.valueShape.matches(list)) continue
+                        step(Op.AccessibilityRemove(list, HelperLines.SERVICE), Prior(settingValue = list), GROUP_UNDO, "Switching off the Home button helper", FailurePolicy.CONTINUE)
+                        accList = HelperLines.without(list)
+                        val switchedOnByUs = (changes + journals).any { it.op == Op.SettingsPut(SettingKey.ACCESSIBILITY_ENABLED, "1") && it.prior?.settingValue != "1" } &&
+                            (changes + journals).any { it.op is Op.AccessibilityAdd }
+                        if (accList == null && accOn == "1" && switchedOnByUs) {
+                            step(Op.SettingsPut(SettingKey.ACCESSIBILITY_ENABLED, "0"), Prior(settingValue = "1"), GROUP_UNDO, "Switching accessibility back off", FailurePolicy.CONTINUE)
+                            accOn = "0"
+                        }
+                    }
                     is UndoOrder.Target.PackageEnabled -> {
                         val current = state(t.pkg) ?: continue
                         val prior = c.prior ?: continue
