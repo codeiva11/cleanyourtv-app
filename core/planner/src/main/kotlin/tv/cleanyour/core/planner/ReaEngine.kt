@@ -200,10 +200,8 @@ object ReaEngine {
     fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
         val ops = mutableListOf<Op>()
 
-        if (snapshot.packages.containsKey(STOCK_TV_RECOMMENDATIONS)) {
-            ops += Op.Disable(STOCK_TV_RECOMMENDATIONS)
-            ops += Op.ClearPackage(STOCK_TV_RECOMMENDATIONS)
-        }
+        ops += Op.Disable(STOCK_TV_RECOMMENDATIONS)
+        ops += Op.ClearPackage(STOCK_TV_RECOMMENDATIONS)
         ops += Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications")
 
         ops += Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0")

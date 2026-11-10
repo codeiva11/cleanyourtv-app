@@ -82,7 +82,7 @@ class SingleCallSiteLintTest {
             .toList()
     }
 
-    private fun rel(f: File) = f.relativeTo(root).path
+    private fun rel(f: File) = f.relativeTo(root).path.replace('\\', '/')
 
     @Test fun execIsCalledFromOnePlaceInTheEngineAndOnlyByTheProbeAndTheSessionElsewhere() {
         val allowed = listOf(

@@ -693,8 +693,11 @@ class SetupMachine(
         val host = (s.state.value as? ConnectionState.Connected)?.endpoint ?: existing?.endpoints?.firstOrNull()
         val name = existing?.nickname ?: doorTv?.friendlyName ?: doorTv?.model ?: facts.model
         val profile = (res as? ProfileResolution.Exact)?.profile
-        val draft = existing?.wizard ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
-            keepDebuggingOn = false, planId = null, updatedAtMs = now)
+        val baseDraft = existing?.wizard ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
+            keepDebuggingOn = false, planId = null, updatedAtMs = now, cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
+        val draft = if (snapshot?.packages?.containsKey(PackageName("com.google.android.tvlauncher")) == true) {
+            baseDraft.copy(cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
+        } else baseDraft
         val tv = Tv(
             id = s.tvId, nickname = name, room = existing?.room, facts = facts,
             endpoints = listOfNotNull(host).ifEmpty { existing?.endpoints.orEmpty() },
@@ -721,10 +724,13 @@ class SetupMachine(
         if (fresh) snapshot = deps.runner.freshSnapshot(s)
         val snap = snapshot ?: return
         val draft = withoutRefusedChoices(record, record.wizard ?: return, snap)
+        val isStock = snap.packages.containsKey(PackageName("com.google.android.tvlauncher"))
         val choices = Choices(
             kept = draft.kept, extraOff = draft.extraOff,
             keepDebuggingOn = draft.keepDebuggingOn,
-            cleanStockHome = draft.cleanStockHome, autoDebloat = draft.autoDebloat, uninstallBloat = draft.uninstallBloat,
+            cleanStockHome = draft.cleanStockHome || isStock,
+            autoDebloat = draft.autoDebloat,
+            uninstallBloat = draft.uninstallBloat,
         )
         val ram = deps.runner.ramByPackage(s)
         when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices, ramByPackage = ram), snap)) {
@@ -1108,7 +1114,7 @@ class SetupMachine(
     }
 
 
-    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs())
+    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
 
     private suspend fun leaveOldHome() {
         val id = tvIdOf(state.value) ?: return

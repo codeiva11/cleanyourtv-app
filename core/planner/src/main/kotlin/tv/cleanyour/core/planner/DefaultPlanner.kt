@@ -308,27 +308,28 @@ class DefaultPlanner(
 
         fun cleanStockHome(stockLaunchers: List<Component>, uninstallBloat: Boolean, ramByPackage: Map<PackageName, Int> = emptyMap()) {
             val stockRows = mutableListOf<RowSummary>()
-            if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS) && !isOff(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
-                stockRows += RowSummary(ReaEngine.STOCK_TV_RECOMMENDATIONS, name(ReaEngine.STOCK_TV_RECOMMENDATIONS), ramNote(ReaEngine.STOCK_TV_RECOMMENDATIONS, description(ReaEngine.STOCK_TV_RECOMMENDATIONS), ramByPackage), off = true, protected = false, whyProtected = null)
-                if (uninstallBloat && snapshot.packages[ReaEngine.STOCK_TV_RECOMMENDATIONS]?.system == true) {
-                    uninstall(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Uninstalling TV recommendations ad provider")
+            val rec = ReaEngine.STOCK_TV_RECOMMENDATIONS
+            if (installed(rec) && !isOff(rec)) {
+                stockRows += RowSummary(rec, name(rec), ramNote(rec, description(rec), ramByPackage), off = true, protected = false, whyProtected = null)
+                if (uninstallBloat && snapshot.packages[rec]?.system == true) {
+                    uninstall(rec, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Uninstalling TV recommendations ad provider")
                 } else {
-                    disable(ReaEngine.STOCK_TV_RECOMMENDATIONS, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Disabling TV recommendations ad provider")
+                    disable(rec, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Disabling TV recommendations ad provider")
                 }
+            } else if (!installed(rec)) {
+                step(Op.Disable(rec), null, GROUP_STOCK_CLEAN, "Disabling TV recommendations ad provider", FailurePolicy.CONTINUE)
             }
             if (stockRows.isNotEmpty()) {
                 groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
             }
-            if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
-                step(Op.ClearPackage(ReaEngine.STOCK_TV_RECOMMENDATIONS), null, GROUP_STOCK_CLEAN, "Clearing ad recommendations cache", FailurePolicy.SKIP_IF_REFUSED)
-            }
-            step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.SKIP_IF_REFUSED)
-            step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Disabling auto-playing video ads", FailurePolicy.SKIP_IF_REFUSED)
-            step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Restricting background ad tracking", FailurePolicy.SKIP_IF_REFUSED)
+            step(Op.ClearPackage(rec), null, GROUP_STOCK_CLEAN, "Clearing ad recommendations cache", FailurePolicy.CONTINUE)
+            step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Disabling auto-playing video ads", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Restricting background ad tracking", FailurePolicy.CONTINUE)
             val stock = stockLaunchers.firstOrNull { it.pkg == ReaEngine.STOCK_GOOGLE_LAUNCHER }
                 ?: Component(ReaEngine.STOCK_GOOGLE_LAUNCHER, ".MainActivity")
-            step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.SKIP_IF_REFUSED)
-            step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.SKIP_IF_REFUSED)
+            step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.CONTINUE)
+            step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.CONTINUE)
         }
 
         // D39 ladder: streaming install when the TV advertises `cmd`, else push to tmp and pm install.
@@ -643,6 +644,7 @@ class DefaultPlanner(
         const val SECTION_HOME = "home_takeover"
         const val SECTION_HELPER = "home_helper"
         const val GROUP_CURTAIN = "curtain"
+        const val GROUP_THEME = "theme"
         const val GROUP_PUT_BACK = "put_back"
         const val GROUP_SWITCH_OFF = "switch_off"
         const val GROUP_LEFTOVERS = "leftovers"
