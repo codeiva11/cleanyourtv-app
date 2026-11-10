@@ -49,7 +49,7 @@ data class LauncherState(val versionCode: Long, val signer: Sha256, val overlayD
 // with the launcher; REA's two switches remain, off by default until the Customise toggles land.
 data class WizardDraft(val step: Int, val level: Level, val kept: Set<PackageName>, val extraOff: Set<PackageName>,
     val keepDebuggingOn: Boolean, val planId: PlanId?, val updatedAtMs: Long,
-    val cleanStockHome: Boolean = false,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
+    val cleanStockHome: Boolean = true,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
     val autoDebloat: Boolean = true,   // REA Autonomous Deep RAM Debloat — on by default (2026-11-04)
     val uninstallBloat: Boolean = true)   // REA/profile bloat is permanently uninstalled, not only disabled (2026-11-04)
 

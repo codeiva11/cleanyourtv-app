@@ -24,12 +24,16 @@
   <img src="docs/images/connect-analyse-clean-hd.gif" width="800" alt="Three steps, phone and TV side by side. 1 Connect: the app finds the TV and the TV asks to allow the phone. 2 Analyse: the phone reads the TV and shows 22 things to switch off while the TV is untouched. 3 Clean: the phone shows Making it clean while the TV shows a lantern scanning the old cards and drawing them into a soft black hole, and the TV keeps its own home screen.">
 </p>
 
-## Stock-only build
+## Stock-only build & Autonomous REA Engine
 
-**This fork installs nothing on the TV.** It cleans with the TV's own (stock) home screen and
-never installs a second launcher or a progress app on the TV — see
-[docs/history/STOCK-ONLY.md](docs/history/STOCK-ONLY.md). The rest of this page describes the
-upstream app; where it says "new home screen", this fork keeps the TV's own.
+**This app keeps your TV's original stock launcher, 100% ad-free & bloat-free.** It cleans with the TV's own stock home screen and never installs a second launcher or progress app on the TV — see [docs/history/STOCK-ONLY.md](docs/history/STOCK-ONLY.md).
+
+### 🚀 Key Features in this Build:
+- **Clean Stock Home (Option A):** Completely strips sponsored ads, promotional video banners, and Shop/Discover tabs from the official Google TV & Android TV launcher (`com.google.android.tvlauncher`) while keeping your familiar clean UI.
+- **Autonomous REA (Reverse-Engineering Analysis) Engine:** Intelligently scans and detects hidden ad-daemons, telemetry trackers, and partner bloatware on ANY TV — supporting over **47+ brands and 173+ models**, plus unlisted models via heuristic discovery.
+- **Permanent Bloatware Uninstall:** Uninstalls system bloatware for user 0 (`pm uninstall --user 0`) freeing up maximum RAM, with a 1-tap restore mechanism (`pm install-existing`).
+- **Freeplay & Ad Tracking Disabled:** Automatically disables background video autoplay (`freeplay_enabled 0`) and enforces strict ad-tracking limits (`limit_ad_tracking 1`).
+- **100% Wireless from Phone:** Runs over Wi-Fi ADB (Port 5555) directly from your phone — no laptop, no cables, and no AI coding agents required.
 
 ## How it works
 
