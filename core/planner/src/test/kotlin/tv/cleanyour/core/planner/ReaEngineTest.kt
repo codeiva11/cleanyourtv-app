@@ -16,9 +16,9 @@ import kotlin.test.assertTrue
 
 class ReaEngineTest {
 
-    private fun state() = PackageState(
+    private fun state(system: Boolean = true) = PackageState(
         enabled = EnabledState.ENABLED,
-        system = true,
+        system = system,
         versionCode = 1L,
         signer = null,
         persistent = false,
@@ -91,5 +91,91 @@ class ReaEngineTest {
         assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.LIMIT_AD_TRACKING && it.value == "1" })
         assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvlauncher") })
         assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == PackageName("com.google.android.tvlauncher") })
+    }
+
+    // 2026-11-10: a Skyworth SWTV with no profile and no Google launcher showed
+    // "Nothing to switch off" — no package name matched any REA signature. Heavy
+    // measured RAM must nominate on its own, so an unknown TV still gets a plan.
+    @Test
+    fun findsHeavyRamSystemAppsByMeasuredRam() {
+        val heavy = PackageName("com.vendor.heavyservice")
+        val packages = mapOf(heavy to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+
+        val candidates = ReaEngine.findDebloatCandidates(
+            snap, fakeFacts, stockLaunchers, ramByPackage = mapOf(heavy to 80 * 1024)
+        )
+
+        assertEquals(1, candidates.size)
+        assertEquals("ram", candidates[0].category)
+        assertEquals(80, candidates[0].estimatedRamMb)
+    }
+
+    @Test
+    fun doesNotNominateByRamWithoutMeasurement() {
+        val heavy = PackageName("com.vendor.heavyservice")
+        val packages = mapOf(heavy to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+
+        // No ramByPackage entry: the estimate never nominates.
+        val candidates = ReaEngine.findDebloatCandidates(snap, fakeFacts, stockLaunchers)
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun doesNotNominateUserAppsByRam() {
+        val heavy = PackageName("com.example.userapp")
+        val packages = mapOf(heavy to state(system = false))
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+
+        val candidates = ReaEngine.findDebloatCandidates(
+            snap, fakeFacts, stockLaunchers, ramByPackage = mapOf(heavy to 120 * 1024)
+        )
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun doesNotNominateProtectedAppsByRam() {
+        val settings = PackageName("com.android.settings")
+        val packages = mapOf(settings to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+
+        val candidates = ReaEngine.findDebloatCandidates(
+            snap, fakeFacts, stockLaunchers, ramByPackage = mapOf(settings to 120 * 1024)
+        )
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun doesNotNominateLightAppsByRam() {
+        val light = PackageName("com.vendor.lightservice")
+        val packages = mapOf(light to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+
+        val candidates = ReaEngine.findDebloatCandidates(
+            snap, fakeFacts, stockLaunchers, ramByPackage = mapOf(light to 20 * 1024)
+        )
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun synthesizesRamGroupSeparately() {
+        val candidates = listOf(
+            ReaEngine.Candidate(PackageName("com.vendor.heavyservice"), "Heavyservice", "Heavy RAM use", "ram", 80),
+            ReaEngine.Candidate(PackageName("com.vendor.oldapp"), "Oldapp", "Bloat", "bloat", 30)
+        )
+        val groups = ReaEngine.synthesizeReaGroups(candidates)
+        assertEquals(2, groups.size)
+        assertEquals("rea_ram", groups[0].id)
+        assertEquals("rea_bloat", groups[1].id)
     }
 }
