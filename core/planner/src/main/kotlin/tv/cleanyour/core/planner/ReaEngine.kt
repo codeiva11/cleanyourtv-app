@@ -47,6 +47,12 @@ object ReaEngine {
         "logging"
     )
 
+    // Heavy RAM use (2026-11-10): a system app running right now whose MEASURED RSS is
+    // at or above this floor is bloat by behaviour, not by name. 50 MB is the floor: on a
+    // 1-2 GB TV a single background system app holding 50 MB+ is heavy enough to matter, and
+    // small services stay out. Only a measured value nominates; the estimate never does.
+    const val HEAVY_RAM_KB = 50 * 1024
+
     // Known vendor partner bloatware and unnecessary background apps
     private val VENDOR_BLOAT_PREFIXES = listOf(
         "com.google.android.leanbacklauncher.partnercustomizer",
@@ -141,6 +147,26 @@ object ReaEngine {
                 )
                 continue
             }
+
+            // 4. Heavy RAM use (2026-11-10): a SYSTEM app that is running right now and
+            // measured at or above HEAVY_RAM_KB is a candidate even when its name matches
+            // no signature. This is what finds bloat on an unknown TV (a Skyworth SWTV
+            // with no profile and no Google launcher), where the name rules find nothing
+            // and the plan comes out empty — "Nothing to switch off". Only measured RSS
+            // nominates; an app with no measurement, and every user-installed app, stays
+            // out. The planner's SwitchOffRule is still the second net (Denylist, the
+            // profile's never-disable, TV inputs, persistent apps, home, keyboard).
+            val rssKb = ramByPackage[pkg]
+            if (snapshot.packages[pkg]?.system == true && rssKb != null && rssKb >= HEAVY_RAM_KB) {
+                candidates += Candidate(
+                    pkg = pkg,
+                    friendlyName = formatName(pkg.value),
+                    description = "Heavy RAM use: about ${rssKb / 1024} MB in RAM right now",
+                    category = "ram",
+                    estimatedRamMb = rssKb / 1024
+                )
+                continue
+            }
         }
 
         // Heaviest first, so the worst RAM hogs sit at the top of their group; the name
@@ -156,7 +182,8 @@ object ReaEngine {
     fun synthesizeReaGroups(candidates: List<Candidate>): List<PackageGroup> {
         val ads = candidates.filter { it.category == "ads" }
         val telemetry = candidates.filter { it.category == "telemetry" }
-        val bloat = candidates.filter { it.category !in setOf("ads", "telemetry") }
+        val ram = candidates.filter { it.category == "ram" }
+        val bloat = candidates.filter { it.category !in setOf("ads", "telemetry", "ram") }
 
         val groups = mutableListOf<PackageGroup>()
         if (ads.isNotEmpty()) {
@@ -173,6 +200,14 @@ object ReaEngine {
                 title = "Tracking and Telemetry (REA Auto-Found)",
                 default = GroupDefault.DISABLE,
                 packages = telemetry.map { PackageEntry(it.pkg, it.description) }
+            )
+        }
+        if (ram.isNotEmpty()) {
+            groups += PackageGroup(
+                id = "rea_ram",
+                title = "Heavy RAM use (REA Auto-Found)",
+                default = GroupDefault.DISABLE,
+                packages = ram.map { PackageEntry(it.pkg, it.description) }
             )
         }
         if (bloat.isNotEmpty()) {
