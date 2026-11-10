@@ -202,12 +202,15 @@ object ReaEngine {
 
         if (snapshot.packages.containsKey(STOCK_TV_RECOMMENDATIONS)) {
             ops += Op.Disable(STOCK_TV_RECOMMENDATIONS)
+            ops += Op.ClearPackage(STOCK_TV_RECOMMENDATIONS)
         }
+        ops += Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications")
 
         ops += Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0")
         ops += Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1")
 
         if (isStockGoogleTvLauncher(snapshot)) {
+            ops += Op.ClearPackage(STOCK_GOOGLE_LAUNCHER)
             ops += Op.RestartHome(Component(STOCK_GOOGLE_LAUNCHER, ".MainActivity"))
         }
 

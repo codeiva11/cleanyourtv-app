@@ -18,11 +18,10 @@ import tv.cleanyour.core.model.Quirk
 import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.model.SnapshotReason
 import tv.cleanyour.core.ops.ShellRenderer
-import tv.cleanyour.core.model.Quirk
 import tv.cleanyour.core.planner.Choices
 import tv.cleanyour.core.model.CurtainGroup
 import tv.cleanyour.core.model.CurtainStage
-import tv.cleanyour.core.model.FailurePolicy
+import tv.cleanyour.core.ops.FailurePolicy
 import tv.cleanyour.core.model.FileRoute
 import tv.cleanyour.core.model.Prior
 import tv.cleanyour.core.model.RemoteDir
@@ -234,7 +233,7 @@ class Harness(val scope: TestScope, val tv: ScriptedTv = ScriptedTv(Samples.snap
             "demo" -> CurtainGroup.SHOP_DEMO
             else -> CurtainGroup.OTHER
         }
-        fun n(x: Int) = x.coerceIn(0, tv.cleanyour.core.ops.ShellRenderer.CUE_MAX)
+        fun n(x: Int) = x.coerceIn(0, ShellRenderer.CUE_MAX)
         fun cue(stage: CurtainStage, count: Int = 0, total: Int = 0, group: CurtainGroup = CurtainGroup.NONE, groupCount: Int = 0, groupTotal: Int = 0) =
             step(Op.CurtainCue(curtainReceiver, token, stage, n(count), n(total), group, n(groupCount), n(groupTotal)), null, "curtain", "", FailurePolicy.CONTINUE)
         fun finale() {

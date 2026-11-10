@@ -85,8 +85,11 @@ class ReaEngineTest {
 
         val ops = ReaEngine.buildCleanStockHomeOps(snap)
         assertTrue(ops.any { it is Op.Disable && it.pkg == PackageName("com.google.android.tvrecommendations") })
+        assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvrecommendations") })
+        assertTrue(ops.any { it is Op.DeleteContent })
         assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.FREEPLAY_ENABLED && it.value == "0" })
         assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.LIMIT_AD_TRACKING && it.value == "1" })
+        assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvlauncher") })
         assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == PackageName("com.google.android.tvlauncher") })
     }
 }

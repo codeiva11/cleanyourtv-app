@@ -50,6 +50,8 @@ object OpJson {
             }
             is Op.Uninstall -> { put("v", "uninstall"); put("pkg", op.pkg.value) }
             is Op.InstallExisting -> { put("v", "install_existing"); put("pkg", op.pkg.value) }
+            is Op.ClearPackage -> { put("v", "clear_package"); put("pkg", op.pkg.value) }
+            is Op.DeleteContent -> { put("v", "delete_content"); put("uri", op.uri) }
             is Op.SettingsPut -> { put("v", "settings_put"); put("key", op.key.name); if (op.value != null) put("value", op.value) }
             is Op.SetHome -> { put("v", "set_home"); put("component", op.component.flat) }
             is Op.VerifyHome -> { put("v", "verify_home"); put("expected", op.expected.flat) }
@@ -97,6 +99,8 @@ object OpJson {
         "install_stream" -> Op.InstallStream(blob(o.obj("blob")), Sha256(o.str("sha256")), pkg(o.str("pkg")), o.long("versionCode"), Sha256(o.str("signer")))
         "uninstall" -> Op.Uninstall(pkg(o.str("pkg")))
         "install_existing" -> Op.InstallExisting(pkg(o.str("pkg")))
+        "clear_package" -> Op.ClearPackage(pkg(o.str("pkg")))
+        "delete_content" -> Op.DeleteContent(o.str("uri"))
         "settings_put" -> Op.SettingsPut(SettingKey.valueOf(o.str("key")), o.optStr("value"))
         "set_home" -> Op.SetHome(component(o.str("component")))
         "verify_home" -> Op.VerifyHome(component(o.str("expected")))

@@ -73,6 +73,8 @@ object LogCodes {
         is Op.InstallStream -> "Install ${op.pkg.value}"
         is Op.Uninstall -> "Uninstall ${op.pkg.value}"
         is Op.InstallExisting -> "InstallExisting ${op.pkg.value}"
+        is Op.ClearPackage -> "ClearPackage ${op.pkg.value}"
+        is Op.DeleteContent -> "DeleteContent"
         is Op.SettingsPut -> "SettingsPut ${op.key.key}"
         is Op.SetHome -> "SetHome ${op.component.flat}"
         is Op.VerifyHome -> "VerifyHome ${op.expected.flat}"

@@ -57,7 +57,9 @@ class PromotedListsSafetyTest {
         for (id in cleanUpOnly) {
             val p = all.getValue(id)
             assertTrue(p.stockLaunchers.isEmpty(), id)
-            assertTrue(refused(setup(profile = p), snapshot = noWizard).any { "no known home screen" in it }, id)
+            // Stock-only: no home switch attempted; clean-up plans cleanly.
+            val planned = plan(setup(profile = p), snapshot = noWizard)
+            assertTrue(planned.steps.isNotEmpty(), id)
         }
     }
 }

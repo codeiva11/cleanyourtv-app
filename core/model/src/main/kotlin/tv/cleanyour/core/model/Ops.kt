@@ -48,6 +48,8 @@ sealed interface Op {
     // so it is only ever disabled. Prior.present == false on the InstallExisting step (the app
     // was missing before the restore); its own inverse is Uninstall.
     data class InstallExisting(val pkg: PackageName) : Op
+    data class ClearPackage(val pkg: PackageName) : Op
+    data class DeleteContent(val uri: String) : Op
     data class SettingsPut(val key: SettingKey, val value: String?) : Op   // value matches key.valueShape; null renders settings delete
     data class SetHome(val component: Component) : Op
     data class VerifyHome(val expected: Component) : Op

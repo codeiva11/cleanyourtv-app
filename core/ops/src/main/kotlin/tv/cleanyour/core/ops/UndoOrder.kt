@@ -53,7 +53,8 @@ object UndoOrder {
         is Op.AccessibilityRemove -> Target.Helper(op.component.pkg)
         is Op.ArmHelperWatchdog,
         is Op.VerifyHome, is Op.ArmHomeWatchdog, is Op.ConfirmHome, is Op.KillWatchdog, Op.PressHome, is Op.Mkdir,
-        is Op.RestartHome, is Op.StartActivity, is Op.Read, is Op.Settle, Op.Reboot, Op.DebugOff, is Op.CurtainCue -> null
+        is Op.RestartHome, is Op.StartActivity, is Op.Read, is Op.Settle, Op.Reboot, Op.DebugOff, is Op.CurtainCue,
+        is Op.ClearPackage, is Op.DeleteContent -> null
     }
 
     // The earliest record of every item, chronological by first touch.

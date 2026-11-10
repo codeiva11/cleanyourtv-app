@@ -139,7 +139,7 @@ class RestoreCommands(private val renderer: OpRenderer) {
         fun isTransient(op: Op): Boolean = when (op) {
             is Op.Read, is Op.VerifyHome, is Op.Settle, is Op.ArmHomeWatchdog, is Op.ConfirmHome, is Op.KillWatchdog,
             Op.PressHome, is Op.RestartHome, is Op.StartActivity, Op.DebugOff, Op.Reboot, is Op.Mkdir, is Op.CurtainCue,
-            is Op.ArmHelperWatchdog -> true
+            is Op.ArmHelperWatchdog, is Op.ClearPackage, is Op.DeleteContent -> true
             else -> false
         }
 

@@ -57,7 +57,8 @@ class RendererPropertyTest {
     private fun settingsPut(): Op.SettingsPut {
         val key = SettingKey.entries[rnd.nextInt(SettingKey.entries.size)]
         val value: String? = when (key) {
-            SettingKey.SCREENSAVER_ENABLED, SettingKey.ACCESSIBILITY_ENABLED -> listOf("0", "1", null)[rnd.nextInt(3)]
+            SettingKey.SCREENSAVER_ENABLED, SettingKey.ACCESSIBILITY_ENABLED,
+            SettingKey.FREEPLAY_ENABLED, SettingKey.LIMIT_AD_TRACKING -> listOf("0", "1", null)[rnd.nextInt(3)]
             SettingKey.SCREENSAVER_COMPONENTS, SettingKey.ENABLED_ACCESSIBILITY -> if (rnd.nextInt(4) == 0) null else componentList()
             SettingKey.ADB_ENABLED, SettingKey.ADB_WIFI_ENABLED -> "0"
             SettingKey.DEVICE_NAME -> if (rnd.nextInt(4) == 0) null else deviceName()

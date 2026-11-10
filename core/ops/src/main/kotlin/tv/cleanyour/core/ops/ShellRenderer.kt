@@ -77,6 +77,11 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
         is Op.InstallExisting -> Rendered(op, lines(line(PM, "install-existing", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
+        is Op.ClearPackage -> Rendered(op, lines(line(PM, "clear", writePkg(op.pkg))), null, Privilege.COMMUNITY, null, T_PM, CAP_DEFAULT)
+        is Op.DeleteContent -> {
+            require(CONTENT_URI_RE.matches(op.uri)) { "invalid content uri: ${op.uri}" }
+            Rendered(op, lines(line("content", "delete", "--uri", op.uri)), null, Privilege.COMMUNITY, null, T_DEFAULT, CAP_DEFAULT)
+        }
         is Op.SettingsPut -> {
             val ns = op.key.ns.name.lowercase()
             val value: String? = op.value
@@ -247,11 +252,12 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         is Op.AccessibilityAdd -> Op.AccessibilityRemove(null, op.component)
         is Op.ArmHelperWatchdog -> Op.KillWatchdog(op.token)
         is Op.AccessibilityRemove -> null
-        is Op.Uninstall -> if (prior.present == true) Op.InstallExisting(op.pkg) else null
-        is Op.InstallExisting -> if (prior.present == false) Op.Uninstall(op.pkg) else null
+        is Op.Uninstall -> null
+        is Op.InstallExisting -> null
         is Op.RemoveFile, is Op.RestartHome, is Op.StartActivity, is Op.Mkdir,
         is Op.ConfirmHome, is Op.KillWatchdog, is Op.VerifyHome, is Op.Read, is Op.Settle,
-        Op.PressHome, Op.Reboot, Op.DebugOff, is Op.CurtainCue -> null
+        Op.PressHome, Op.Reboot, Op.DebugOff, is Op.CurtainCue,
+        is Op.ClearPackage, is Op.DeleteContent -> null
     }
 
     override fun check(op: Op, verifyOutput: String, prior: Prior?): VerifyResult {
@@ -307,7 +313,8 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             is Op.StartActivity -> if (!op.wait || ("Status: ok" in lines && lines.none { it.startsWith("Error") })) VerifyResult.Ok
                 else mismatch("Status: ok and no Error from am start -W")
             is Op.Mkdir, is Op.RestartHome, is Op.Read, is Op.Settle,
-            Op.PressHome, Op.Reboot, Op.DebugOff, is Op.CurtainCue -> VerifyResult.Ok
+            Op.PressHome, Op.Reboot, Op.DebugOff, is Op.CurtainCue,
+            is Op.ClearPackage, is Op.DeleteContent -> VerifyResult.Ok
         }
     }
 
@@ -383,6 +390,7 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         private val HOME_ARGV = arrayOf(CMD, "package", "resolve-activity", "--brief", "-c", "android.intent.category.HOME", "-a", "android.intent.action.MAIN")
         private val SCREEN_PNG = RemotePath(RemoteDir.TMP, listOf("screen.png"))
         private val PID_RE = Regex("^[0-9]{1,10}$")
+        private val CONTENT_URI_RE = Regex("""^content://[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_./-]*)?$""")
         // RFC-CURTAIN-1: the curtain's package, its cue action and the extra flags of am.
         const val CURTAIN_PACKAGE = "tv.cleanyour.curtain"
         const val CUE_ACTION = "tv.cleanyour.curtain.CUE"

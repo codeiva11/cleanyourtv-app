@@ -291,12 +291,10 @@ class DefaultPlanner(
             }
             if (custom.isNotEmpty()) groups += GroupSummary(GROUP_CUSTOM, "Also switched off", custom.size, custom.size, custom)
             // beta4 (issue #945, review of beta4): a 0.4.5 Setup on the Xiaomi brand set switched Mi TV+
-            // and the web content off with PatchWall kept on. Where the TV's own home screen is off or
-            // goes off now, the feeds this app switched off come back on first, before the switch; a
-            // feed off for another reason stays off.
-            val stockOff = stockLaunchers.any { installed(it.pkg) && isOff(it.pkg) }
-            if (stockOff) {
-                val back = PatchWallFeeds.off(snapshot, patchWallGoesOff).filter { PatchWallFeeds.ours(journals, it) }
+            // and the web content off with PatchWall kept on. The feeds this app switched off come
+            // back on first; a feed off for another reason stays off.
+            val back = PatchWallFeeds.off(snapshot, patchWallGoesOff).filter { PatchWallFeeds.ours(journals, it) }
+            if (back.isNotEmpty()) {
                 val rows = back.map { RowSummary(it, name(it), description(it), off = false, protected = true, whyProtected = REASON_PATCHWALL_FEED_BACK) }
                 for (pkg in back) { enable(pkg, GROUP_PATCHWALL_FEEDS, "Switching ${name(pkg)} back on: PatchWall needs it"); disabled++ }
                 if (rows.isNotEmpty()) groups += GroupSummary(GROUP_PATCHWALL_FEEDS, TITLE_PATCHWALL_FEEDS, 0, rows.size, rows)
@@ -321,10 +319,15 @@ class DefaultPlanner(
             if (stockRows.isNotEmpty()) {
                 groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
             }
+            if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
+                step(Op.ClearPackage(ReaEngine.STOCK_TV_RECOMMENDATIONS), null, GROUP_STOCK_CLEAN, "Clearing ad recommendations cache", FailurePolicy.SKIP_IF_REFUSED)
+            }
+            step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.SKIP_IF_REFUSED)
             step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Disabling auto-playing video ads", FailurePolicy.SKIP_IF_REFUSED)
             step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Restricting background ad tracking", FailurePolicy.SKIP_IF_REFUSED)
             val stock = stockLaunchers.firstOrNull { it.pkg == ReaEngine.STOCK_GOOGLE_LAUNCHER }
                 ?: Component(ReaEngine.STOCK_GOOGLE_LAUNCHER, ".MainActivity")
+            step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.SKIP_IF_REFUSED)
             step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.SKIP_IF_REFUSED)
         }
 
@@ -670,6 +673,8 @@ class DefaultPlanner(
             is Op.Enable -> op.pkg
             is Op.DefaultState -> op.pkg
             is Op.Uninstall -> op.pkg
+            is Op.InstallExisting -> op.pkg
+            is Op.ClearPackage -> op.pkg
             is Op.Install -> op.pkg
             is Op.InstallStream -> op.pkg
             else -> null

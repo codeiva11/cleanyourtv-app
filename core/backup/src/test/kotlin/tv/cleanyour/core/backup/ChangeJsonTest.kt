@@ -35,6 +35,8 @@ class ChangeJsonTest {
         Op.Disable(pkg), Op.Enable(pkg), Op.DefaultState(pkg),
         Op.Install(path, blob.sha256, pkg, 7, Samples.zeroHash, setOf(InstallFlag.REPLACE)),
         Op.InstallStream(blob, blob.sha256, pkg, 8, Samples.zeroHash), Op.Uninstall(pkg),
+        Op.InstallExisting(pkg), Op.ClearPackage(pkg),
+        Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"),
         Op.SettingsPut(SettingKey.SCREENSAVER_ENABLED, "1"), Op.SettingsPut(SettingKey.DEVICE_NAME, null),
         Op.SetHome(comp), Op.VerifyHome(comp), Op.ArmHomeWatchdog(comp, 120, token), Op.ConfirmHome(token),
         Op.KillWatchdog(token), Op.PressHome, Op.Mkdir(RemoteDir.OVERLAY),

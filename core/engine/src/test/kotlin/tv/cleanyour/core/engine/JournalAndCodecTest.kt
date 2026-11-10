@@ -151,6 +151,8 @@ class PlanJsonTest {
             Op.Disable(launcher.pkg), Op.Enable(launcher.pkg), Op.DefaultState(launcher.pkg),
             Op.Install(path, sha, launcher.pkg, 7, sha, setOf(tv.cleanyour.core.model.InstallFlag.REPLACE)), Op.Install(path, sha, launcher.pkg, 7, sha, emptySet()),
             Op.InstallStream(blob, sha, launcher.pkg, 7, sha), Op.Uninstall(launcher.pkg),
+            Op.InstallExisting(launcher.pkg), Op.ClearPackage(launcher.pkg),
+            Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"),
             Op.SettingsPut(tv.cleanyour.core.model.SettingKey.DEVICE_NAME, "Mi TV 4A"), Op.SettingsPut(tv.cleanyour.core.model.SettingKey.DEVICE_NAME, null),
             Op.SetHome(launcher), Op.VerifyHome(launcher), Op.ArmHomeWatchdog(Samples.stockLauncher, 120, token), Op.ConfirmHome(token), Op.KillWatchdog(token),
             Op.PressHome, Op.Mkdir(tv.cleanyour.core.model.RemoteDir.OVERLAY), Op.PushAsset(blob, path, sha), Op.RemoveFile(path), Op.RestartHome(launcher),
