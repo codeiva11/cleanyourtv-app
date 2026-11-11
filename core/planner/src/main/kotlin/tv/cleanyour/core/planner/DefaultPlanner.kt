@@ -308,11 +308,11 @@ class DefaultPlanner(
             keepNames = choices.kept.filter { installed(it) }.map { name(it) }.sorted()
 
             if (choices.cleanStockHome && ReaEngine.isStockGoogleTvLauncher(snapshot)) {
-                cleanStockHome(stockLaunchers, choices.uninstallBloat, req.ramByPackage)
+                cleanStockHome(stockLaunchers, choices.kept, req.ramByPackage)
             }
         }
 
-        fun cleanStockHome(stockLaunchers: List<Component>, uninstallBloat: Boolean, ramByPackage: Map<PackageName, Int> = emptyMap()) {
+        fun cleanStockHome(stockLaunchers: List<Component>, kept: Set<PackageName> = emptySet(), ramByPackage: Map<PackageName, Int> = emptyMap()) {
             val stockRows = mutableListOf<RowSummary>()
 
             // 1. Permanently uninstall every ad, recommendation, and Shop tab provider.
@@ -321,7 +321,7 @@ class DefaultPlanner(
             //    via pm uninstall -k --user 0, the stock launcher queries it on reboot and restores
             //    the Shop tab! All packages in STOCK_AD_AND_SHOP_PACKAGES are uninstalled here.
             for (pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES) {
-                if (pkg in choices.kept) continue
+                if (pkg in kept) continue
                 stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
                 if (installed(pkg)) {
                     uninstall(pkg, GROUP_STOCK_CLEAN)
