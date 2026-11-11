@@ -356,12 +356,12 @@ class DefaultPlanner(
             // 2. Clear pending ad notifications
             step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
 
-            // 3. Block every known ad/shop setting so the Shop tab, Discover row and video ads stay gone
-            step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Disabling auto-playing video ads", FailurePolicy.CONTINUE)
-            step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Restricting background ad tracking", FailurePolicy.CONTINUE)
-            step(Op.SettingsPut(SettingKey.PERSONALIZED_ADS, "0"), Prior(settingValue = snapshot.settings[SettingKey.PERSONALIZED_ADS]), GROUP_STOCK_CLEAN, "Disabling personalized ads", FailurePolicy.CONTINUE)
-            step(Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.DISCOVER_ENABLED]), GROUP_STOCK_CLEAN, "Disabling Discover/Shop tab", FailurePolicy.CONTINUE)
-            step(Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0"), Prior(settingValue = snapshot.settings[SettingKey.SPONSORED_CONTENT]), GROUP_STOCK_CLEAN, "Disabling sponsored content", FailurePolicy.CONTINUE)
+            // 3. Block every known ad/shop setting so the Shop tab, Discover row and video ads stay gone permanently
+            step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Permanent block: auto-playing video ads", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Permanent block: background ad tracking", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.PERSONALIZED_ADS, "0"), Prior(settingValue = snapshot.settings[SettingKey.PERSONALIZED_ADS]), GROUP_STOCK_CLEAN, "Permanent block: personalized ad targeting", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.DISCOVER_ENABLED]), GROUP_STOCK_CLEAN, "Permanent block: Discover & Shop tab injection", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0"), Prior(settingValue = snapshot.settings[SettingKey.SPONSORED_CONTENT]), GROUP_STOCK_CLEAN, "Permanent block: sponsored promotional channels", FailurePolicy.CONTINUE)
 
             // Speed up TV performance by disabling UI animation lag
             step(Op.SettingsPut(SettingKey.WINDOW_ANIMATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.WINDOW_ANIMATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up window animations", FailurePolicy.CONTINUE)
