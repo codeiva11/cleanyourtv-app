@@ -98,7 +98,7 @@ class RendererPropertyTest {
         else -> Op.ArmHelperWatchdog(service, rnd.nextInt(30, 301), token(), rnd.nextBoolean())
     }
 
-    private fun anyOp(): Op = when (rnd.nextInt(24)) {
+    private fun anyOp(): Op = when (rnd.nextInt(27)) {
         0 -> Op.Disable(pkg())
         1 -> Op.Enable(pkg())
         2 -> Op.DefaultState(pkg())
@@ -122,6 +122,9 @@ class RendererPropertyTest {
         20 -> Op.Reboot
         21 -> cue()
         22 -> helperOp()
+        23 -> Op.InstallExisting(pkg())
+        24 -> Op.ClearPackage(pkg())
+        25 -> Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications")
         else -> Op.DebugOff
     }
 

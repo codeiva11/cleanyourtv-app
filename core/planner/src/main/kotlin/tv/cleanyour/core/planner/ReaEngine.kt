@@ -28,8 +28,9 @@ object ReaEngine {
 
     // The essential packages that power the Shop tab, video ads, and sponsored recommendations on stock launcher.
     // Crucially includes com.google.android.videos (Google Play Movies & TV) which directly injects the "Shop"
-    // tab into the Google TV / Android TV stock launcher. All of these must be permanently uninstalled (pm uninstall -k --user 0)
-    // so the Shop tab, Discover tab, and video ads cannot return after the TV restarts.
+    // tab into the Google TV / Android TV stock launcher.
+    // Disabling (pm disable-user --user 0) sets enabled="3" in package-restrictions.xml so Android OS
+    // NEVER relaunches them on reboot, and pm clear wipes their cache completely.
     val STOCK_AD_AND_SHOP_PACKAGES = listOf(
         PackageName("com.google.android.tvrecommendations"),   // Central Ad signals & recommendations
         PackageName("com.google.android.videos"),              // Google Play Movies & TV (POWERS THE SHOP TAB!)
@@ -37,12 +38,22 @@ object ReaEngine {
         PackageName("com.google.android.youtube.tvmusic"),     // YouTube Music TV
         PackageName("com.google.android.pano.discover"),       // Google TV Discover row & recommendations
         PackageName("com.google.android.tv.frameworkpackagestubs"), // Google TV partner promo stubs
+        PackageName("com.google.android.partnersetup"),        // Partner setup attribution
         PackageName("com.smartdevice.leanbacklauncher.customizer"),
         PackageName("com.smartdevice.acr.recommendation"),
         PackageName("com.smartdevice.epopplayer"),
         PackageName("com.smartdevice.emanual"),
+        PackageName("com.Smartdevice.emanual"),
         PackageName("fusion.android.tv.demo"),
         PackageName("com.mstar.android.tv.disclaimercustomization"),
+        PackageName("com.coocaa.demonow.lightining"),
+        PackageName("com.coocaa.sysreport"),
+        PackageName("com.coocaa.tvpi"),
+        PackageName("com.coocaa.messageprovider"),
+        PackageName("com.tianci.ad"),
+        PackageName("com.tianci.push"),
+        PackageName("com.tianci.autoinstaller"),
+        PackageName("com.coocaa.mall"),
     )
 
     // Heuristic signatures for Ads & Recommendation daemons
@@ -65,7 +76,15 @@ object ReaEngine {
         "advertising",
         "advertisement",
         "adv.",
-        "billboard"
+        "billboard",
+        "customizer",
+        "partnercustomizer",
+        "demonow",
+        "sysreport",
+        "messageprovider",
+        "tvpi",
+        "autoinstaller",
+        "mall"
     )
 
     // Heuristic signatures for Telemetry & Analytics trackers

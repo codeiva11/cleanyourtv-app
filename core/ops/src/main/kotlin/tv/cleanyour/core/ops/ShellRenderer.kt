@@ -75,7 +75,7 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         }
         is Op.Uninstall -> Rendered(op, lines(line(PM, "uninstall", "-k", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
-        is Op.InstallExisting -> Rendered(op, lines(line(PM, "install-existing", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
+        is Op.InstallExisting -> Rendered(op, lines(line(PM, "install-existing", USER, "0", pkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
         is Op.ClearPackage -> Rendered(op, lines(line(PM, "clear", writePkg(op.pkg))), null, Privilege.COMMUNITY, null, T_PM, CAP_DEFAULT)
         is Op.DeleteContent -> {

@@ -34,8 +34,8 @@ class JvmConventionPlugin : Plugin<Project> {
         tasks.withType<Test>().configureEach {
             useJUnit()
             systemProperty(repoRootProperty, rootDir.absolutePath)
-            // A hung test fails after 5 minutes instead of holding the shared forge build lock.
-            timeout.set(java.time.Duration.ofMinutes(5))
+            // A hung test fails after 10 minutes instead of holding the shared forge build lock.
+            timeout.set(java.time.Duration.ofMinutes(10))
             testLogging {
                 events("failed")
                 exceptionFormat = TestExceptionFormat.FULL

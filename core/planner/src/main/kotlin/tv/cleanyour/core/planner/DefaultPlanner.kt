@@ -319,6 +319,13 @@ class DefaultPlanner(
         fun cleanStockHome(stockLaunchers: List<Component>, kept: Set<PackageName> = emptySet(), ramByPackage: Map<PackageName, Int> = emptyMap()) {
             val stockRows = mutableListOf<RowSummary>()
 
+            // 0. Ensure Google Play Store and external storage stay installed, enabled and safe
+            val vending = PackageName("com.android.vending")
+            val extStorage = PackageName("com.android.externalstorage")
+            step(Op.InstallExisting(vending), Prior(present = false), GROUP_STOCK_CLEAN, "Ensuring Google Play Store is installed", FailurePolicy.CONTINUE)
+            step(Op.Enable(vending), Prior(packageState = state(vending)?.enabled), GROUP_STOCK_CLEAN, "Ensuring Google Play Store is enabled", FailurePolicy.CONTINUE)
+            step(Op.Enable(extStorage), Prior(packageState = state(extStorage)?.enabled), GROUP_STOCK_CLEAN, "Ensuring external storage is enabled", FailurePolicy.CONTINUE)
+
             // 1. Permanently uninstall every ad, recommendation, and Shop tab provider.
             //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct
             //    provider of the "Shop" tab in com.google.android.tvlauncher and com.google.android.apps.tv.launcherx.
@@ -328,16 +335,18 @@ class DefaultPlanner(
             for (pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES) {
                 if (pkg in kept) continue
                 val isCore = pkg == ReaEngine.STOCK_TV_RECOMMENDATIONS || pkg == ReaEngine.GOOGLE_PLAY_MOVIES
-                if (!installed(pkg) && !isCore) continue
+                val isPresent = installed(pkg)
+                if (!isPresent && !isCore) continue
 
-                stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
-                if (installed(pkg)) {
+                if (isPresent) {
+                    stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
+                    step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
                     uninstall(pkg, GROUP_STOCK_CLEAN)
-                } else {
-                    // Core package not reported currently installed: ensure it is uninstalled so it cannot revive on reboot.
+                } else if (isCore) {
+                    // Core package not reported currently installed: ensure it is cleared and uninstalled so it cannot revive on reboot.
+                    step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
                     step(Op.Uninstall(pkg), Prior(present = true), GROUP_STOCK_CLEAN, "Uninstalling ${name(pkg)}", FailurePolicy.CONTINUE)
                 }
-                step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
             }
 
             if (stockRows.isNotEmpty()) {

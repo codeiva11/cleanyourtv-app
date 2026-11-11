@@ -85,6 +85,7 @@ class RestoreCommandsTest {
         assertTrue(steps.none { it.kind == RestoreStepKind.NOT_FROM_LAPTOP }, steps.toString())
         assertTrue(steps.all { it.lines.isNotEmpty() && it.note == null })
         assertEquals(listOf("'pm' 'enable' '--user' '0' 'com.xiaomi.statistic'"), steps.single { it.inverse == Op.Enable(PackageName("com.xiaomi.statistic")) }.lines)
+        assertEquals(listOf("'pm' 'uninstall' '-k' '--user' '0' '${Scenario.launcher.pkg.value}'"), steps.single { it.inverse is Op.Uninstall }.lines)
     }
 
     // R5-W6 M1: setup, then "TV's own home screen", then "remove the new one". The steps come in the

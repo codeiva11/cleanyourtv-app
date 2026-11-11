@@ -1128,7 +1128,7 @@ class SetupMachine(
     }
 
 
-    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = false, autoDebloat = false, uninstallBloat = false)
+    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
 
     private suspend fun leaveOldHome() {
         val id = tvIdOf(state.value) ?: return
@@ -1390,6 +1390,7 @@ class SetupMachine(
                 delay(600)
             }
         }
+        attempt { deps.sessions.existing(tvId)?.close() }
         effect(SetupEffect.Navigate("manage/${tvId.value}"))
     }
 

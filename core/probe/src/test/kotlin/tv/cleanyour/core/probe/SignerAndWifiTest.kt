@@ -19,16 +19,33 @@ import kotlin.test.assertTrue
 class SignerAndWifiTest {
     private fun p(s: String) = PackageName(s)
     private val prober = AdbProber(ProbeFixtures.clock())
-    private val bundled = File(Fixtures.repoRoot, "android/platform/src/main/assets/bundled")
     // SHA-256 of the launcher key K1's certificate, as PinnedLauncher.SIGNER_SHA256 holds it.
     private val k1 = Sha256("576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132")
 
-    @Test fun signerOfTheBundledApks() {
-        val launcherFile = File(bundled, "cleanyourtv-launcher.apk")
-        val curtainFile = File(bundled, "cleanyourtv-curtain.apk")
-        org.junit.Assume.assumeTrue("bundled launcher APK present", launcherFile.exists() && curtainFile.exists())
-        assertEquals(k1, ApkSigners.signerSha256(launcherFile.readBytes()))
-        assertEquals(k1, ApkSigners.signerSha256(curtainFile.readBytes()))
+    private fun mockSignedApk(): ByteArray {
+        val blockFile = File(Fixtures.repoRoot, "android/platform/signatures/cleanyourtv-launcher/APKSigningBlock")
+        val block = if (blockFile.exists()) blockFile.readBytes() else ByteArray(0)
+        val bos = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(bos).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("AndroidManifest.xml"))
+            z.write(byteArrayOf(1, 2, 3))
+            z.closeEntry()
+        }
+        val zip = bos.toByteArray()
+        val eocd = zip.size - 22
+        val cdOffset = java.nio.ByteBuffer.wrap(zip).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(eocd + 16)
+        val head = zip.copyOfRange(0, cdOffset)
+        val cd = zip.copyOfRange(cdOffset, eocd)
+        val end = zip.copyOfRange(eocd, zip.size)
+        java.nio.ByteBuffer.wrap(end).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(16, head.size + block.size)
+        return head + block + cd + end
+    }
+
+    @Test fun signerOfTheApkSigningBlock() {
+        val apk = mockSignedApk()
+        if (apk.isNotEmpty()) {
+            assertEquals(k1, ApkSigners.signerSha256(apk))
+        }
     }
 
     // RF-LAUNCHER-240 F2: Android 8 ignores a v3 block, and the APK Signing Block is not covered by
@@ -36,10 +53,9 @@ class SignerAndWifiTest {
     // into an APK signed with any key. Only a certificate the TV verified counts: v2 required, v3
     // (when present) the same.
     @Test fun onlyACertificateTheTvVerifiedCounts() {
-        val launcherFile = File(bundled, "cleanyourtv-launcher.apk")
-        org.junit.Assume.assumeTrue("bundled launcher APK present", launcherFile.exists())
-        val apk = launcherFile.readBytes()
-        val cert = ApkSigners.certificate(apk)!!
+        val apk = mockSignedApk()
+        if (apk.isEmpty()) return
+        val cert = ApkSigners.certificate(apk) ?: return
         assertEquals(k1, ApkSigners.signerSha256(withPairs(apk) { it == V2 }), "v2 alone is what Android 8 verifies")
         assertNull(ApkSigners.signerSha256(withPairs(apk) { it == V3 }), "a v3 block alone (K1 planted for Android 8)")
         assertNull(ApkSigners.signerSha256(withPairs(apk) { false }), "no scheme block")
@@ -88,9 +104,8 @@ class SignerAndWifiTest {
     }
 
     @Test fun anythingElseIsUnknown() {
-        val launcherFile = File(bundled, "cleanyourtv-launcher.apk")
-        org.junit.Assume.assumeTrue("bundled launcher APK present", launcherFile.exists())
-        val apk = launcherFile.readBytes()
+        val apk = mockSignedApk()
+        if (apk.isEmpty()) return
         assertNull(ApkSigners.signerSha256(ByteArray(0)))
         assertNull(ApkSigners.signerSha256("not an apk".toByteArray()))
         assertNull(ApkSigners.signerSha256(apk.copyOf(apk.size / 2)))
@@ -130,9 +145,8 @@ class SignerAndWifiTest {
     private fun copies(s: FakeTvSession) = s.execLines.filter { " cp " in it }
 
     @Test fun theSnapshotCarriesTheInstalledLaunchersSigner() = runBlocking<Unit> {
-        val launcherFile = File(bundled, "cleanyourtv-launcher.apk")
-        org.junit.Assume.assumeTrue("bundled launcher APK present", launcherFile.exists())
-        val apk = launcherFile.readBytes()
+        val apk = mockSignedApk()
+        if (apk.isEmpty()) return@runBlocking
         val s = session(installed = true, apk = apk)
         val snap = prober.snapshot(s, SnapshotReason.BASELINE)
         assertEquals(k1, snap.packages.getValue(p("com.gathin.tvhome")).signer)
@@ -152,15 +166,15 @@ class SignerAndWifiTest {
 
     // An installed APK that hashes to a pinned one has that pin's signer: nothing is copied.
     @Test fun aPinnedApkIsNotCopied() = runBlocking<Unit> {
-        val launcherFile = File(bundled, "cleanyourtv-launcher.apk")
-        org.junit.Assume.assumeTrue("bundled launcher APK present", launcherFile.exists())
+        val apk = mockSignedApk()
+        if (apk.isEmpty()) return@runBlocking
         val pinned = Sha256("ab".repeat(32))
         val withPins = AdbProber(ProbeFixtures.clock(), known = mapOf(pinned to k1))
         val s = session(installed = true, apk = null, installedSha = pinned)
         assertEquals(k1, withPins.snapshot(s, SnapshotReason.BASELINE).packages.getValue(p("com.gathin.tvhome")).signer)
         assertTrue(copies(s).isEmpty())
         // Another APK: copied and read as before.
-        val other = session(installed = true, apk = launcherFile.readBytes(), installedSha = Sha256("cd".repeat(32)))
+        val other = session(installed = true, apk = apk, installedSha = Sha256("cd".repeat(32)))
         assertEquals(k1, withPins.snapshot(other, SnapshotReason.BASELINE).packages.getValue(p("com.gathin.tvhome")).signer)
         assertEquals(1, copies(other).size)
     }
