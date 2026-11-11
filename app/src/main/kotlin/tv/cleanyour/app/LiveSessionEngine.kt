@@ -1,7 +1,6 @@
 package tv.cleanyour.app
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
@@ -132,7 +131,20 @@ class CurrentSession(private val sessions: SessionManager, private val initial: 
     fun current(): TvSession = sessions.existing(tvId) ?: initial
 
     override val identity: TvIdentity get() = current().identity
-    override val state: StateFlow<ConnectionState> = FollowedState()
+
+    // The state of whichever session is current, using composition instead of inheriting
+    // StateFlow (which required ExperimentalForInheritanceCoroutinesApi). `value` reads through
+    // to the current session; collectors switch when the manager's map changes.
+    override val state: StateFlow<ConnectionState> = object : StateFlow<ConnectionState> {
+        override val value: ConnectionState get() = current().state.value
+        override val replayCache: List<ConnectionState> get() = listOf(value)
+        @OptIn(ExperimentalCoroutinesApi::class)
+        override suspend fun collect(collector: FlowCollector<ConnectionState>): Nothing {
+            sessions.states.map { current() }.distinctUntilChanged { a, b -> a === b }
+                .flatMapLatest { it.state }.distinctUntilChanged().collect(collector)
+            awaitCancellation()
+        }
+    }
 
     override suspend fun exec(line: ShellLine, spec: ExecSpec): ExecResult = current().exec(line, spec)
     override fun lines(line: ShellLine, spec: ExecSpec): Flow<String> = current().lines(line, spec)
@@ -143,17 +155,4 @@ class CurrentSession(private val sessions: SessionManager, private val initial: 
     override suspend fun awaitBoot(timeoutMs: Long): BootOutcome = current().awaitBoot(timeoutMs)
     override fun hold(): SessionHold = current().hold()
     override suspend fun close() = current().close()
-
-    // The state of whichever session is current. `value` is read straight through (the engine only
-    // reads it); collectors switch to a new session when the manager's map changes.
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class, ExperimentalCoroutinesApi::class)
-    private inner class FollowedState : StateFlow<ConnectionState> {
-        override val value: ConnectionState get() = current().state.value
-        override val replayCache: List<ConnectionState> get() = listOf(value)
-        override suspend fun collect(collector: FlowCollector<ConnectionState>): Nothing {
-            sessions.states.map { current() }.distinctUntilChanged { a, b -> a === b }
-                .flatMapLatest { it.state }.distinctUntilChanged().collect(collector)
-            awaitCancellation()
-        }
-    }
 }

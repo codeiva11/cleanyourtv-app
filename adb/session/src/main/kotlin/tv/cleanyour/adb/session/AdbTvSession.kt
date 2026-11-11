@@ -141,13 +141,19 @@ class AdbTvSession internal constructor(
     }
 
     // A fresh connection from the manager for this TV (the flows opened the same TV again).
+    // Thread-safe: the adoptable slot is guarded by synchronized to prevent a race where two
+    // concurrent adopt() calls overwrite the slot and leak the old connection.
     internal fun adopt(conn: AdbConnection, at: Endpoint) {
         endpoint = at
         if (mutex.tryLock()) {
             try { installLocked(conn) } finally { mutex.unlock() }
         } else {
-            adoptable?.let { scope.launch { it.close() } }
-            adoptable = conn
+            val old: AdbConnection?
+            synchronized(this) {
+                old = adoptable
+                adoptable = conn
+            }
+            old?.let { scope.launch { it.close() } }
         }
     }
 

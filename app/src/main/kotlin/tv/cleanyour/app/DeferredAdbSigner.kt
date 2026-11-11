@@ -5,7 +5,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
 import tv.cleanyour.adb.wire.AdbSigner
 import tv.cleanyour.adb.wire.AuthToken
 import tv.cleanyour.adb.wire.KeyBacking
@@ -44,11 +43,14 @@ class DeferredAdbSigner(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun readyOrNull(): AdbSigner? = deferred.takeIf { it.isCompleted && !failed(it) }?.getCompleted()
 
-    private fun blocking(): AdbSigner = readyOrNull() ?: runBlocking { get() }
+    // The signer when it is ready; throws IllegalStateException when not ready yet instead of
+    // blocking the calling thread (which was the Main thread ANR risk with the old runBlocking).
+    private fun readyOrThrow(): AdbSigner = readyOrNull()
+        ?: throw IllegalStateException("ADB signer not ready yet; sign() must be called first")
 
-    override val publicKeyLine: String get() = blocking().publicKeyLine
-    override val fingerprint: String get() = blocking().fingerprint
-    override val backing: KeyBacking get() = blocking().backing
+    override val publicKeyLine: String get() = readyOrThrow().publicKeyLine
+    override val fingerprint: String get() = readyOrThrow().fingerprint
+    override val backing: KeyBacking get() = readyOrThrow().backing
     override suspend fun sign(token: AuthToken): ByteArray = get().sign(token)
     override suspend fun reset() = get().reset()
 

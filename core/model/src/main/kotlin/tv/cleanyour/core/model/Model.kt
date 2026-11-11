@@ -51,7 +51,7 @@ data class WizardDraft(val step: Int, val level: Level, val kept: Set<PackageNam
     val keepDebuggingOn: Boolean, val planId: PlanId?, val updatedAtMs: Long,
     val cleanStockHome: Boolean = false,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
     val autoDebloat: Boolean = false,   // REA Autonomous Deep RAM Debloat
-    val uninstallBloat: Boolean = false)   // Permanently uninstall system bloat using pm uninstall -k --user 0
+    val uninstallBloat: Boolean = true)   // Permanently uninstall system bloat (default on: pm install-existing restores instantly)
 
 sealed interface ConnectionState {
     data object Idle : ConnectionState
@@ -100,7 +100,13 @@ enum class SettingKey(val ns: SettingsNs, val key: String, val valueShape: Regex
     ADB_WIFI_ENABLED(SettingsNs.GLOBAL, "adb_wifi_enabled", Regex("^0$")),
     DEVICE_NAME(SettingsNs.GLOBAL, "device_name", Regex("^[A-Za-z0-9 ._-]{1,32}$")),
     FREEPLAY_ENABLED(SettingsNs.SECURE, "freeplay_enabled", Regex("^[01]$")),
-    LIMIT_AD_TRACKING(SettingsNs.SECURE, "limit_ad_tracking", Regex("^[01]$")) }
+    LIMIT_AD_TRACKING(SettingsNs.SECURE, "limit_ad_tracking", Regex("^[01]$")),
+    // RFC-SHOP-1: additional Google TV ad/shop settings that prevent the Shop tab and sponsored
+    // content from reappearing after the stock launcher restarts. Without these the launcher
+    // re-fetches its ad configuration on the next cold start and the Shop row returns.
+    PERSONALIZED_ADS(SettingsNs.SECURE, "personalized_ads", Regex("^[01]$")),
+    DISCOVER_ENABLED(SettingsNs.SECURE, "discover_enabled", Regex("^[01]$")),
+    SPONSORED_CONTENT(SettingsNs.SECURE, "sponsored_content_enabled", Regex("^[01]$")) }
 
 enum class GroupDefault { DISABLE, ASK, KEEP }
 enum class Platform { ANDROID_TV, GOOGLE_TV, FIRE_OS, TCL_CN }

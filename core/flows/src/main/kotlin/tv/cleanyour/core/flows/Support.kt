@@ -76,9 +76,16 @@ fun keyDigest12(sha: Sha256): String = sha.hex.take(12).chunked(4).joinToString(
 fun fingerprintTail(fingerprint: String): String =
     fingerprint.split(':').takeLast(2).joinToString(":") { it.uppercase() }
 
-// S1c: RFC 1918 and link-local IPv4 only ("That isn't an address on your home network").
+// S1c: RFC 1918, link-local IPv4 and IPv6 link-local/ULA ("That isn't an address on your home network").
 fun isHomeAddress(text: String): Boolean {
-    val parts = text.trim().split('.')
+    val trimmed = text.trim()
+    // IPv6: link-local (fe80::) and ULA (fd00::/8) are local network addresses.
+    if (':' in trimmed) {
+        val lower = trimmed.lowercase()
+        return lower.startsWith("fe80:") || lower.startsWith("fd")
+    }
+    // IPv4: RFC 1918 and link-local
+    val parts = trimmed.split('.')
     if (parts.size != 4) return false
     val o = parts.map { p -> if (p.isEmpty() || p.length > 3 || !p.all(Char::isDigit)) return false else p.toInt() }
     if (o.any { it > 255 }) return false
@@ -112,7 +119,7 @@ object Families {
             "chromecast" in text || "google tv" in text || "philips" in text || "benq" in text -> GTV
             "mi tv" in text || "mitv" in text || "xiaomi" in text || "mibox" in text || "mi box" in text ||
                 "hisense" in text || "bravia" in text || "sony" in text || "shield" in text -> ATV
-            "tcl" in text -> UNKNOWN
+            "tcl" in text -> TCL_ASK   // TCL TVs need the menus question (China vs global firmware)
             else -> UNKNOWN
         }
     }
