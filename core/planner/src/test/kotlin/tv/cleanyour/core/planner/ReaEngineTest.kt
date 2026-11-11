@@ -79,12 +79,14 @@ class ReaEngineTest {
     fun buildsCleanStockHomeOps() {
         val packages = mapOf(
             PackageName("com.google.android.tvlauncher") to state(),
-            PackageName("com.google.android.tvrecommendations") to state()
+            PackageName("com.google.android.tvrecommendations") to state(),
+            PackageName("com.google.android.videos") to state()
         )
         val snap = Samples.snapshot(packages = packages)
 
         val ops = ReaEngine.buildCleanStockHomeOps(snap)
-        assertTrue(ops.any { it is Op.Disable && it.pkg == PackageName("com.google.android.tvrecommendations") })
+        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.tvrecommendations") })
+        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.videos") })
         assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvrecommendations") })
         assertTrue(ops.any { it is Op.DeleteContent })
         assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.FREEPLAY_ENABLED && it.value == "0" })

@@ -21,6 +21,24 @@ object ReaEngine {
 
     val STOCK_GOOGLE_LAUNCHER = PackageName("com.google.android.tvlauncher")
     val STOCK_TV_RECOMMENDATIONS = PackageName("com.google.android.tvrecommendations")
+    val GOOGLE_PLAY_MOVIES = PackageName("com.google.android.videos")
+
+    // The essential packages that power the Shop tab, video ads, and sponsored recommendations on stock launcher.
+    // Crucially includes com.google.android.videos (Google Play Movies & TV) which directly injects the "Shop"
+    // tab into the Google TV / Android TV stock launcher. All of these must be permanently uninstalled (pm uninstall -k --user 0)
+    // so the Shop tab, Discover tab, and video ads cannot return after the TV restarts.
+    val STOCK_AD_AND_SHOP_PACKAGES = listOf(
+        PackageName("com.google.android.tvrecommendations"),   // Central Ad signals & recommendations
+        PackageName("com.google.android.videos"),              // Google Play Movies & TV (POWERS THE SHOP TAB!)
+        PackageName("com.google.android.play.games"),          // Play Games TV
+        PackageName("com.google.android.youtube.tvmusic"),     // YouTube Music TV
+        PackageName("com.smartdevice.leanbacklauncher.customizer"),
+        PackageName("com.smartdevice.acr.recommendation"),
+        PackageName("com.smartdevice.epopplayer"),
+        PackageName("com.smartdevice.emanual"),
+        PackageName("fusion.android.tv.demo"),
+        PackageName("com.mstar.android.tv.disclaimercustomization"),
+    )
 
     // Heuristic signatures for Ads & Recommendation daemons
     private val ADS_SIGNATURES = listOf(
@@ -298,34 +316,38 @@ object ReaEngine {
 
     /**
      * Builds the exact operations for Option A: Clean Stock Home.
-     * Permanently uninstalls tvrecommendations (the central ad signals provider), blocks every
-     * known ad/shop setting so the Shop tab, Discover row and sponsored content cannot return
-     * after the stock launcher restarts, and restarts the launcher with a cleared cache.
+     * Permanently uninstalls all ad providers and Google Play Movies & TV (the Shop tab provider),
+     * blocks every known ad/shop setting so the Shop tab, Discover row and sponsored content
+     * cannot return after the TV restarts, and restarts the launcher with a cleared cache.
      *
-     * RFC-SHOP-1: earlier builds only disabled tvrecommendations and set two settings. The
-     * launcher re-fetched its ad configuration on the next cold start and the Shop row came back.
-     * This version uninstalls tvrecommendations (system app; instant undo with pm install-existing),
-     * clears the launcher's cached ad data and notification provider, and writes every known
-     * Google TV ad/shop secure setting to its off value.
+     * RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct provider of the
+     * "Shop" tab in com.google.android.tvlauncher. Unless it is uninstalled via pm uninstall -k --user 0,
+     * the stock launcher queries it on restart/reboot and brings the Shop tab right back!
      */
     fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
         val ops = mutableListOf<Op>()
 
-        // 1. Permanently remove tvrecommendations (the central Ad Signals provider).
-        //    pm uninstall removes it for the user; pm install-existing brings it back instantly.
-        ops += Op.Uninstall(STOCK_TV_RECOMMENDATIONS)
-        ops += Op.ClearPackage(STOCK_TV_RECOMMENDATIONS)
+        // 1. Permanently remove all ad providers and the Shop tab provider (com.google.android.videos).
+        //    pm uninstall -k --user 0 uninstalls them for user 0; pm install-existing brings them back on 1-tap Undo.
+        for (pkg in STOCK_AD_AND_SHOP_PACKAGES) {
+            if (pkg in snapshot.packages || pkg == STOCK_TV_RECOMMENDATIONS || pkg == GOOGLE_PLAY_MOVIES) {
+                ops += Op.Uninstall(pkg)
+                ops += Op.ClearPackage(pkg)
+            }
+        }
+
+        // 2. Clear pending ad notifications
         ops += Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications")
 
-        // 2. Block every known ad/shop setting so the Shop tab and sponsored content stay gone.
+        // 3. Block every known ad/shop setting so the Shop tab and sponsored content stay gone
         ops += Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0")
         ops += Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1")
         ops += Op.SettingsPut(SettingKey.PERSONALIZED_ADS, "0")
         ops += Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0")
         ops += Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0")
 
-        // 3. Clear the launcher's cached ads and Shop tab data, then restart it so the
-        //    ad-free stock home screen shows immediately.
+        // 4. CRITICAL: Clear launcher's cached ads and Shop/Discover tabs from its SQLite database,
+        //    then restart it so the clean layout takes effect immediately.
         if (isStockGoogleTvLauncher(snapshot)) {
             ops += Op.ClearPackage(STOCK_GOOGLE_LAUNCHER)
             ops += Op.RestartHome(Component(STOCK_GOOGLE_LAUNCHER, ".MainActivity"))

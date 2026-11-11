@@ -247,9 +247,15 @@ class DefaultPlanner(
             }
             val covered = mutableSetOf<PackageName>()
             var disabled = 0
-            fun wanted(pkg: PackageName, default: GroupDefault): Boolean = when (default) {
-                GroupDefault.DISABLE -> pkg !in choices.kept
-                GroupDefault.ASK, GroupDefault.KEEP -> pkg in choices.extraOff && pkg !in choices.kept
+            fun wanted(pkg: PackageName, default: GroupDefault): Boolean = when {
+                pkg in choices.kept -> false
+                // RFC-SHOP-1: ad and Shop tab providers (like com.google.android.videos) are always
+                // debloated when autoDebloat or cleanStockHome is on, even if a community profile
+                // put them into an "ask" category.
+                (choices.autoDebloat || choices.cleanStockHome) && pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES -> true
+                default == GroupDefault.DISABLE -> true
+                default == GroupDefault.ASK || default == GroupDefault.KEEP -> pkg in choices.extraOff
+                else -> false
             }
             // Whether this plan switches PatchWall off: its first row decides, as in the loop below,
             // else the Custom list.
@@ -308,21 +314,41 @@ class DefaultPlanner(
 
         fun cleanStockHome(stockLaunchers: List<Component>, uninstallBloat: Boolean, ramByPackage: Map<PackageName, Int> = emptyMap()) {
             val stockRows = mutableListOf<RowSummary>()
-            val rec = ReaEngine.STOCK_TV_RECOMMENDATIONS
-            if (installed(rec) && !isOff(rec)) {
-                stockRows += RowSummary(rec, name(rec), ramNote(rec, description(rec), ramByPackage), off = true, protected = false, whyProtected = null)
-                switchOff(rec, GROUP_STOCK_CLEAN, uninstallBloat)
-            } else if (!installed(rec)) {
-                if (uninstallBloat) step(Op.Uninstall(rec), Prior(present = true), GROUP_STOCK_CLEAN, "Uninstalling TV recommendations ad provider", FailurePolicy.CONTINUE)
-                else step(Op.Disable(rec), null, GROUP_STOCK_CLEAN, "Disabling TV recommendations ad provider", FailurePolicy.CONTINUE)
+
+            // 1. Permanently uninstall every ad, recommendation, and Shop tab provider.
+            //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct
+            //    provider of the "Shop" tab in com.google.android.tvlauncher. Unless it is uninstalled
+            //    via pm uninstall -k --user 0, the stock launcher queries it on reboot and restores
+            //    the Shop tab! All packages in STOCK_AD_AND_SHOP_PACKAGES are uninstalled here.
+            for (pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES) {
+                if (pkg in choices.kept) continue
+                stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
+                if (installed(pkg)) {
+                    uninstall(pkg, GROUP_STOCK_CLEAN)
+                } else {
+                    // Even if not reported as currently installed (e.g. uninstalled or disabled in another state),
+                    // ensure it is uninstalled with CONTINUE policy so it cannot revive on reboot.
+                    step(Op.Uninstall(pkg), Prior(present = true), GROUP_STOCK_CLEAN, "Uninstalling ${name(pkg)}", FailurePolicy.CONTINUE)
+                }
+                step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
             }
+
             if (stockRows.isNotEmpty()) {
                 groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
             }
-            step(Op.ClearPackage(rec), null, GROUP_STOCK_CLEAN, "Clearing ad recommendations cache", FailurePolicy.CONTINUE)
+
+            // 2. Clear pending ad notifications
             step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
+
+            // 3. Block every known ad/shop setting so the Shop tab, Discover row and video ads stay gone
             step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Disabling auto-playing video ads", FailurePolicy.CONTINUE)
             step(Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1"), Prior(settingValue = snapshot.settings[SettingKey.LIMIT_AD_TRACKING]), GROUP_STOCK_CLEAN, "Restricting background ad tracking", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.PERSONALIZED_ADS, "0"), Prior(settingValue = snapshot.settings[SettingKey.PERSONALIZED_ADS]), GROUP_STOCK_CLEAN, "Disabling personalized ads", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.DISCOVER_ENABLED]), GROUP_STOCK_CLEAN, "Disabling Discover/Shop tab", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0"), Prior(settingValue = snapshot.settings[SettingKey.SPONSORED_CONTENT]), GROUP_STOCK_CLEAN, "Disabling sponsored content", FailurePolicy.CONTINUE)
+
+            // 4. CRITICAL: Clear launcher's cached ads and Shop/Discover tabs from its SQLite database,
+            //    then restart it so the clean layout takes effect immediately.
             val stock = stockLaunchers.firstOrNull { it.pkg == ReaEngine.STOCK_GOOGLE_LAUNCHER }
                 ?: Component(ReaEngine.STOCK_GOOGLE_LAUNCHER, ".MainActivity")
             step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.CONTINUE)
