@@ -166,7 +166,7 @@ class EngineTest {
         assertEquals(RunStatus.ABANDONED, fin.status)
         assertTrue(curtainPkg !in h.tv.packages, "the curtain is not left on the TV")
         val sent = h.tv.execLog.drop(before).map { tv.cleanyour.testing.fixtures.Recording.normalize(it) }.filter { !it.startsWith("dumpsys") && !it.startsWith("pm list") && !it.startsWith("pm path") }   // reads
-        assertEquals(listOf("pm uninstall --user 0 tv.cleanyour.curtain"), sent, "only the curtain's removal is sent")
+        assertEquals(listOf("pm uninstall -k --user 0 tv.cleanyour.curtain"), sent, "only the curtain's removal is sent")
         val off = plan.steps.filter { it.op is Op.Disable && it.index in h.records(plan).filterIsInstance<JournalRecord.Done>().map { d -> d.i } }
         assertTrue(off.isNotEmpty())
         for (s in off) assertEquals(EnabledState.DISABLED_USER, h.tv.state((s.op as Op.Disable).pkg), "kept off")

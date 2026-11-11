@@ -658,7 +658,8 @@ class DefaultEngine(
     // never go off, whatever an older plan file says. Upstream #421: a package that asks for
     // TV_INPUT_HARDWARE is the layer under the HDMI, AV and tuner inputs, so it stays on.
     private fun switchOffReason(run: Run, step: Step, target: PackageName, live: PackageState?, dump: String): String? {
-        return SwitchOffRule.reason(target, live, run.profile, run.snapshot, run.stockLaunchers,
+        val inSection = run.plan.sections.any { it.name in run.openSections && step.index in it.from..it.to }
+        return SwitchOffRule.reason(target, live, run.profile, run.snapshot, run.stockLaunchers, inHomeSwitch = inSection,
             requestsTvInputHardware = PackageDump.requestsTvInputHardware(dump))
     }
 

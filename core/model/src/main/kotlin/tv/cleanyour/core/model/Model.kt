@@ -49,9 +49,9 @@ data class LauncherState(val versionCode: Long, val signer: Sha256, val overlayD
 // with the launcher; REA's two switches remain, off by default until the Customise toggles land.
 data class WizardDraft(val step: Int, val level: Level, val kept: Set<PackageName>, val extraOff: Set<PackageName>,
     val keepDebuggingOn: Boolean, val planId: PlanId?, val updatedAtMs: Long,
-    val cleanStockHome: Boolean = false,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
-    val autoDebloat: Boolean = false,   // REA Autonomous Deep RAM Debloat
-    val uninstallBloat: Boolean = true)   // Permanently uninstall system bloat (default on: pm install-existing restores instantly)
+    val cleanStockHome: Boolean = true,   // Option A: Clean Stock Home (Ad-Free, 0-Risk Google UI)
+    val autoDebloat: Boolean = true,   // REA Autonomous Deep RAM Debloat - on by default
+    val uninstallBloat: Boolean = true)   // Permanently uninstall system bloat by default for maximum free RAM
 
 sealed interface ConnectionState {
     data object Idle : ConnectionState
@@ -106,7 +106,10 @@ enum class SettingKey(val ns: SettingsNs, val key: String, val valueShape: Regex
     // re-fetches its ad configuration on the next cold start and the Shop row returns.
     PERSONALIZED_ADS(SettingsNs.SECURE, "personalized_ads", Regex("^[01]$")),
     DISCOVER_ENABLED(SettingsNs.SECURE, "discover_enabled", Regex("^[01]$")),
-    SPONSORED_CONTENT(SettingsNs.SECURE, "sponsored_content_enabled", Regex("^[01]$")) }
+    SPONSORED_CONTENT(SettingsNs.SECURE, "sponsored_content_enabled", Regex("^[01]$")),
+    WINDOW_ANIMATION_SCALE(SettingsNs.GLOBAL, "window_animation_scale", Regex("^[0-9.]+$")),
+    TRANSITION_ANIMATION_SCALE(SettingsNs.GLOBAL, "transition_animation_scale", Regex("^[0-9.]+$")),
+    ANIMATOR_DURATION_SCALE(SettingsNs.GLOBAL, "animator_duration_scale", Regex("^[0-9.]+$")) }
 
 enum class GroupDefault { DISABLE, ASK, KEEP }
 enum class Platform { ANDROID_TV, GOOGLE_TV, FIRE_OS, TCL_CN }

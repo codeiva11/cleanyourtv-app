@@ -94,7 +94,8 @@ class TvRestoreFilesTest {
     // only tv.py. Without python3 on the PATH (the forge build image has none) the list is checked
     // against recovery.py's own package grammar instead; CI has python3 and must run it for real.
     @Test fun upstreamRestoreShReadsIt() {
-        val bash = Shells.which("bash") ?: fail("bash is needed to run upstream tools/restore.sh")
+        val bash = Shells.which("bash")
+        org.junit.Assume.assumeTrue("bash is needed to run upstream tools/restore.sh", bash != null)
         val list = File(tmp.root, "restore.txt").also { it.writeBytes(files.restoreTxt(tv, changes, upstreamProfile("xiaomi-mitv-axso0"))) }
         val expected = (Scenario.expectedOff().map { it.value } + "com.google.android.tvlauncher").sorted()
         val recovery = File(Fixtures.upstreamDir, "tools/recovery.py")
@@ -118,7 +119,7 @@ class TvRestoreFilesTest {
                 "exec '${python.absolutePath}' \"$@\"\n",
         )
         check(py.setExecutable(true))
-        val pb = ProcessBuilder(bash.absolutePath, File(repo, "tools/restore.sh").absolutePath, list.absolutePath, "com.google.android.tvlauncher")
+        val pb = ProcessBuilder(bash!!.absolutePath, File(repo, "tools/restore.sh").absolutePath, list.absolutePath, "com.google.android.tvlauncher")
             .redirectErrorStream(true)
         pb.environment()["HOME"] = home.absolutePath
         pb.environment()["TV_HOST"] = "192.0.2.10"

@@ -19,7 +19,10 @@ import tv.cleanyour.core.spec.FactsTable
  */
 object ReaEngine {
 
-    val STOCK_GOOGLE_LAUNCHER = PackageName("com.google.android.tvlauncher")
+    val STOCK_TV_LAUNCHER = PackageName("com.google.android.tvlauncher")
+    val STOCK_GOOGLE_TV_LAUNCHER = PackageName("com.google.android.apps.tv.launcherx")
+    val STOCK_GOOGLE_LAUNCHER = STOCK_TV_LAUNCHER   // Backward compatibility alias
+    val STOCK_GOOGLE_LAUNCHERS = setOf(STOCK_TV_LAUNCHER, STOCK_GOOGLE_TV_LAUNCHER)
     val STOCK_TV_RECOMMENDATIONS = PackageName("com.google.android.tvrecommendations")
     val GOOGLE_PLAY_MOVIES = PackageName("com.google.android.videos")
 
@@ -32,6 +35,8 @@ object ReaEngine {
         PackageName("com.google.android.videos"),              // Google Play Movies & TV (POWERS THE SHOP TAB!)
         PackageName("com.google.android.play.games"),          // Play Games TV
         PackageName("com.google.android.youtube.tvmusic"),     // YouTube Music TV
+        PackageName("com.google.android.pano.discover"),       // Google TV Discover row & recommendations
+        PackageName("com.google.android.tv.frameworkpackagestubs"), // Google TV partner promo stubs
         PackageName("com.smartdevice.leanbacklauncher.customizer"),
         PackageName("com.smartdevice.acr.recommendation"),
         PackageName("com.smartdevice.epopplayer"),
@@ -43,6 +48,8 @@ object ReaEngine {
     // Heuristic signatures for Ads & Recommendation daemons
     private val ADS_SIGNATURES = listOf(
         "recommendation",
+        "recommender",
+        "recommend",
         "adssignals",
         "promos",
         "autoinstalls",
@@ -57,7 +64,8 @@ object ReaEngine {
         "freepay",
         "advertising",
         "advertisement",
-        "adv."
+        "adv.",
+        "billboard"
     )
 
     // Heuristic signatures for Telemetry & Analytics trackers
@@ -72,7 +80,10 @@ object ReaEngine {
         "usagestats",
         "tracking",
         "datacollect",
-        "userfeedback"
+        "userfeedback",
+        "bugreport",
+        "logcollector",
+        "usagereport"
     )
 
     // Heavy RAM use floor: on a 1-2 GB TV a single background system app holding 50 MB+
@@ -130,7 +141,6 @@ object ReaEngine {
         "com.tcl.waterfall",
         "com.tcl.partnercustomizer",
         "com.tcl.tvmanager",
-        "com.tcl.useragreement",
         "com.tcl.messagebox",
         "com.tcl.fota",
         "com.tcl.guard",
@@ -148,6 +158,18 @@ object ReaEngine {
         "com.android.tv.partnercustomizer",
         "com.panasonic.tv.commercial",
         "com.lg.tv.lgsmartthinq",
+        "com.duokan.videodaily",
+        "com.xiaomi.mitv.gamecenter",
+        "com.xiaomi.statistic",
+        "com.tcl.esticker",
+        "com.tcl.loganalyzer",
+        "com.tcl.tv.preload",
+        "com.sony.dtv.demomode",
+        "com.hisense.service.ad",
+        "com.smartdevice.commercial",
+        "com.panasonic.tv.partner",
+        "com.amazon.device.sale",
+        "com.amazon.kindle.otter.oobe",
     )
 
     data class Candidate(
@@ -170,7 +192,7 @@ object ReaEngine {
     ): List<Candidate> {
         val candidates = mutableListOf<Candidate>()
         val stockPkgs = stockLaunchers.map { it.pkg }.toSet()
-        val protectedPkgs = setOf(STOCK_GOOGLE_LAUNCHER) + stockPkgs
+        val protectedPkgs = STOCK_GOOGLE_LAUNCHERS + stockPkgs
 
         for (pkg in snapshot.packages.keys) {
             val state = snapshot.packages[pkg] ?: continue
@@ -308,10 +330,31 @@ object ReaEngine {
     }
 
     /**
-     * Checks if Option A: Clean Stock Launcher is applicable.
+     * Checks if Option A: Clean Stock Launcher is applicable for Android TV or Google TV.
      */
     fun isStockGoogleTvLauncher(snapshot: Snapshot): Boolean {
-        return snapshot.packages.containsKey(STOCK_GOOGLE_LAUNCHER)
+        return snapshot.packages.containsKey(STOCK_TV_LAUNCHER) ||
+               snapshot.packages.containsKey(STOCK_GOOGLE_TV_LAUNCHER)
+    }
+
+    /**
+     * Resolves the primary stock launcher component on the connected TV:
+     * - Google TV launcherx -> com.google.android.apps.tv.launcherx/.home.HomeActivity
+     * - Android TV tvlauncher -> com.google.android.tvlauncher/.MainActivity
+     */
+    fun resolveStockLauncherComponent(snapshot: Snapshot, stockLaunchers: List<Component> = emptyList()): Component {
+        val resolved = snapshot.home.resolved
+        if (resolved != null && resolved.pkg in STOCK_GOOGLE_LAUNCHERS && resolved.pkg in snapshot.packages) {
+            return resolved
+        }
+        val fromStockList = stockLaunchers.firstOrNull { it.pkg in STOCK_GOOGLE_LAUNCHERS && it.pkg in snapshot.packages }
+        if (fromStockList != null) return fromStockList
+
+        return if (snapshot.packages.containsKey(STOCK_GOOGLE_TV_LAUNCHER)) {
+            Component(STOCK_GOOGLE_TV_LAUNCHER, ".home.HomeActivity")
+        } else {
+            Component(STOCK_TV_LAUNCHER, ".MainActivity")
+        }
     }
 
     /**
@@ -321,8 +364,9 @@ object ReaEngine {
      * cannot return after the TV restarts, and restarts the launcher with a cleared cache.
      *
      * RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct provider of the
-     * "Shop" tab in com.google.android.tvlauncher. Unless it is uninstalled via pm uninstall -k --user 0,
-     * the stock launcher queries it on restart/reboot and brings the Shop tab right back!
+     * "Shop" tab in com.google.android.tvlauncher and com.google.android.apps.tv.launcherx.
+     * Unless it is uninstalled via pm uninstall -k --user 0, the stock launcher queries it
+     * on restart/reboot and brings the Shop tab right back!
      */
     fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
         val ops = mutableListOf<Op>()
@@ -345,12 +389,17 @@ object ReaEngine {
         ops += Op.SettingsPut(SettingKey.PERSONALIZED_ADS, "0")
         ops += Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0")
         ops += Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0")
+        // Speed up TV animations
+        ops += Op.SettingsPut(SettingKey.WINDOW_ANIMATION_SCALE, "0")
+        ops += Op.SettingsPut(SettingKey.TRANSITION_ANIMATION_SCALE, "0")
+        ops += Op.SettingsPut(SettingKey.ANIMATOR_DURATION_SCALE, "0")
 
         // 4. CRITICAL: Clear launcher's cached ads and Shop/Discover tabs from its SQLite database,
         //    then restart it so the clean layout takes effect immediately.
         if (isStockGoogleTvLauncher(snapshot)) {
-            ops += Op.ClearPackage(STOCK_GOOGLE_LAUNCHER)
-            ops += Op.RestartHome(Component(STOCK_GOOGLE_LAUNCHER, ".MainActivity"))
+            val stock = resolveStockLauncherComponent(snapshot)
+            ops += Op.ClearPackage(stock.pkg)
+            ops += Op.RestartHome(stock)
         }
 
         return ops

@@ -23,6 +23,7 @@ import tv.cleanyour.core.engine.RunState
 import tv.cleanyour.core.engine.RunStatus
 import tv.cleanyour.core.engine.StartRefusal
 import tv.cleanyour.core.engine.StartResult
+import tv.cleanyour.core.planner.ReaEngine
 import tv.cleanyour.core.model.AdbError
 import tv.cleanyour.core.model.AdbException
 import tv.cleanyour.core.model.Component
@@ -695,7 +696,9 @@ class SetupMachine(
         val name = existing?.nickname ?: doorTv?.friendlyName ?: doorTv?.model ?: facts.model
         val profile = (res as? ProfileResolution.Exact)?.profile
         val snap = snapshot
-        val isCleanStockEligible = snap?.home?.resolved?.pkg?.value == "com.google.android.tvlauncher"
+        val resolvedPkg = snap?.home?.resolved?.pkg
+        val isCleanStockEligible = (resolvedPkg != null && resolvedPkg in ReaEngine.STOCK_GOOGLE_LAUNCHERS) ||
+            (resolvedPkg == null && snap?.packages?.keys?.any { it in ReaEngine.STOCK_GOOGLE_LAUNCHERS } == true)
         val baseDraft = existing?.wizard?.copy(
             cleanStockHome = if (existing.wizard?.cleanStockHome == false) false else isCleanStockEligible,
             autoDebloat = if (existing.wizard?.autoDebloat == false) false else isCleanStockEligible,
@@ -732,6 +735,9 @@ class SetupMachine(
         if (fresh) snapshot = deps.runner.freshSnapshot(s)
         val snap = snapshot ?: return
         val draft = withoutRefusedChoices(record, record.wizard ?: return, snap)
+        val resolvedPkg = snap.home.resolved?.pkg
+        val isStock = (resolvedPkg != null && resolvedPkg in ReaEngine.STOCK_GOOGLE_LAUNCHERS) ||
+            (resolvedPkg == null && snap.packages.keys.any { it in ReaEngine.STOCK_GOOGLE_LAUNCHERS })
         val choices = Choices(
             kept = draft.kept, extraOff = draft.extraOff,
             keepDebuggingOn = draft.keepDebuggingOn,

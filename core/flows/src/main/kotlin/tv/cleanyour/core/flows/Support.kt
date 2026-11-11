@@ -119,7 +119,6 @@ object Families {
             "chromecast" in text || "google tv" in text || "philips" in text || "benq" in text -> GTV
             "mi tv" in text || "mitv" in text || "xiaomi" in text || "mibox" in text || "mi box" in text ||
                 "hisense" in text || "bravia" in text || "sony" in text || "shield" in text -> ATV
-            "tcl" in text -> TCL_ASK   // TCL TVs need the menus question (China vs global firmware)
             else -> UNKNOWN
         }
     }

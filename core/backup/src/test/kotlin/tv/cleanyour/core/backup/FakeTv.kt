@@ -87,7 +87,12 @@ class FakeTvDir(val root: File, val adbSerial: String, val props: Map<String, St
         pb.environment()["STUB_TV"] = tv.absolutePath
         pb.environment().remove("ADB")
         val out = File(root, "out.txt"); val err = File(root, "err.txt")
-        pb.redirectOutput(out).redirectError(err).redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+        pb.redirectOutput(out).redirectError(err)
+        val isWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+        val nullFile = if (isWindows) File("NUL") else File("/dev/null")
+        if (nullFile.exists()) {
+            pb.redirectInput(ProcessBuilder.Redirect.from(nullFile))
+        }
         val p = pb.start()
         check(p.waitFor(120, TimeUnit.SECONDS)) { p.destroyForcibly(); "script timed out" }
         return ShellRun(p.exitValue(), out.readText(), err.readText())
@@ -102,10 +107,12 @@ data class ShellRun(val exit: Int, val out: String, val err: String) {
 // there); the others run when installed.
 object Shells {
     fun available(): List<List<String>> {
-        val candidates = listOf(
-            listOf("/bin/sh"), listOf("dash"), listOf("bash", "--posix"), listOf("busybox", "sh"),
-            listOf("mksh"), listOf("yash"), listOf("zsh", "--emulate", "sh"),
-        )
+            val isWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+            if (isWindows) return emptyList()
+            val candidates = listOf(
+                listOf("/bin/sh"), listOf("dash"), listOf("bash", "--posix"), listOf("busybox", "sh"),
+                listOf("mksh"), listOf("yash"), listOf("zsh", "--emulate", "sh"),
+            )
         return candidates.filter { c -> c[0].startsWith("/") && File(c[0]).canExecute() || which(c[0]) != null }
             .map { c -> if (c[0].startsWith("/")) c else listOf(which(c[0])!!.absolutePath) + c.drop(1) }
             .distinctBy { it.joinToString(" ") }

@@ -103,8 +103,28 @@ fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
 ### 3. Testing Your Changes Locally
 Run the pure Kotlin unit test suite (no Android emulator required):
 ```bash
-./gradlew :core:planner:test --tests tv.cleanyour.core.planner.ReaEngineTest
+# If submodules are not yet initialized:
+git submodule update --init --recursive
+
+# Run core tests:
+./gradlew :core:planner:test :core:ops:test :core:engine:test :core:flows:test :core:probe:test
 ```
+
+---
+
+## 🛠️ Local Android SDK & Submodule Setup
+
+To build Android APKs (`assembleFullDebug` or `assembleFullRelease`), make sure you have:
+1. Submodules checked out:
+   ```bash
+   git submodule update --init --recursive
+   ```
+2. Android SDK configured in `local.properties`:
+   ```properties
+   sdk.dir=C\:\\Users\\YourUser\\AppData\\Local\\Android\\Sdk
+   ```
+   (or on Linux/macOS: `sdk.dir=/home/user/Android/Sdk`)
+3. JDK 17 or JDK 21 installed.
 
 ---
 

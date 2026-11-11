@@ -58,7 +58,11 @@ class RendererPropertyTest {
         val key = SettingKey.entries[rnd.nextInt(SettingKey.entries.size)]
         val value: String? = when (key) {
             SettingKey.SCREENSAVER_ENABLED, SettingKey.ACCESSIBILITY_ENABLED,
-            SettingKey.FREEPLAY_ENABLED, SettingKey.LIMIT_AD_TRACKING -> listOf("0", "1", null)[rnd.nextInt(3)]
+            SettingKey.FREEPLAY_ENABLED, SettingKey.LIMIT_AD_TRACKING,
+            SettingKey.PERSONALIZED_ADS, SettingKey.DISCOVER_ENABLED,
+            SettingKey.SPONSORED_CONTENT -> listOf("0", "1", null)[rnd.nextInt(3)]
+            SettingKey.WINDOW_ANIMATION_SCALE, SettingKey.TRANSITION_ANIMATION_SCALE,
+            SettingKey.ANIMATOR_DURATION_SCALE -> listOf("0", "0.5", "1", null)[rnd.nextInt(4)]
             SettingKey.SCREENSAVER_COMPONENTS, SettingKey.ENABLED_ACCESSIBILITY -> if (rnd.nextInt(4) == 0) null else componentList()
             SettingKey.ADB_ENABLED, SettingKey.ADB_WIFI_ENABLED -> "0"
             SettingKey.DEVICE_NAME -> if (rnd.nextInt(4) == 0) null else deviceName()

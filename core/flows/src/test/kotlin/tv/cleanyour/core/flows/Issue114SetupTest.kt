@@ -57,7 +57,13 @@ class Issue114SetupTest {
         val found = assertIs<SetupState.Found>(m.state.value, log)
         assertTrue(h.logLines.any { it.startsWith("setup: probe done") && it.contains("profile brand set TCL, tv TCL Smart TV Pro (BeyondTV4) sdk 30") }, log)
         assertTrue(h.logLines.none { it.contains("tcl-65c725") }, log)
-        val off = found.plan.steps.mapNotNull { (it.op as? Op.Disable)?.pkg }.toSet()
+        val off = found.plan.steps.mapNotNull {
+            when (val op = it.op) {
+                is Op.Disable -> op.pkg
+                is Op.Uninstall -> op.pkg
+                else -> null
+            }
+        }.toSet()
         assertTrue(off.isNotEmpty(), log)
         for (p in Issue114.keptByTheGoogleTvList + Issue114.wizard + Issue114.launcherx.pkg) assertTrue(p !in off, p.value)
         assertTrue(found.plan.sections.isEmpty(), "no home screen switch")

@@ -102,8 +102,29 @@ class Harness(val scope: TestScope, val tv: ScriptedTv = ScriptedTv(Samples.snap
     // takeover form is the stored plan and the clean-up form is the live planner's Setup.
     fun setupPlan(takeover: Boolean = true, installLauncher: Boolean = true, profile: Profile = profile(), planner: DefaultPlanner = this.planner,
         watchdogSeconds: Int = DefaultPlanner.WATCHDOG_SECONDS, confirmWindowMs: Long = 90_000): Plan =
-        if (!takeover) plan(PlanRequest.Setup(ProfileResolution.Exact(profile), Choices(emptySet(), emptySet(), false)), planner)
+        if (!takeover) storedCleanupPlan(profile, installLauncher)
         else storedTakeoverPlan(profile, watchdogSeconds, confirmWindowMs)
+
+    fun storedCleanupPlan(profile: Profile = profile(), installLauncher: Boolean = true): Plan {
+        val snap = tv.snapshot(SnapshotReason.BASELINE)
+        val id = idGen.planId()
+        val steps = mutableListOf<Step>()
+        fun step(op: Op, prior: Prior?, group: String?, narration: String, policy: FailurePolicy): Int {
+            steps += Step(steps.size, op, renderer.render(op), prior, group, narration, policy)
+            return steps.size - 1
+        }
+        for (pkg in debloat) step(Op.Disable(pkg), Prior(packageState = snap.packages[pkg]?.enabled), "ads",
+            "Switching off ${pkg.value}", FailurePolicy.SKIP_IF_REFUSED)
+        if (installLauncher) {
+            step(Op.Settle(15), null, "launcher", "Giving the TV 15 seconds to settle", FailurePolicy.CONTINUE)
+            step(Op.InstallStream(artifact.blob, artifact.sha256, launcher.pkg, 1, signer), Prior(present = false),
+                "launcher", "Installing the new home screen", FailurePolicy.CONTINUE)
+        }
+        val rows = debloat.map { RowSummary(it, it.value, "", off = true, protected = false, whyProtected = null) }
+        val summary = PlanSummary(listOf(GroupSummary("ads", "Adverts and telemetry", debloat.size, debloat.size, rows)), emptyList())
+        return Plan(id, tv.tvId, PlanKind.SETUP, snap.contentHash, steps, emptyList(), summary,
+            renderer.planHash(steps.map { it.rendered }), Samples.NOW_MS, "0.1.0")
+    }
 
     fun storedTakeoverPlan(profile: Profile = profile(), watchdogSeconds: Int = DefaultPlanner.WATCHDOG_SECONDS, confirmWindowMs: Long = 90_000): Plan {
         val snap = tv.snapshot(SnapshotReason.BASELINE)

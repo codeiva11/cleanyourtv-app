@@ -41,6 +41,7 @@ object SwitchOffRule {
         profile: Profile?,
         snapshot: Snapshot?,
         stockLaunchers: List<Component>,
+        inHomeSwitch: Boolean = false,
         requestsTvInputHardware: Boolean = false,
     ): String? {
         Denylist.reason(pkg, state, profile, snapshot)?.let { return it }
@@ -48,6 +49,7 @@ object SwitchOffRule {
         if (FireOs.isHome(pkg)) return DefaultPlanner.REASON_FIRE_OS_HOME
         val stock = stockLaunchers.any { it.pkg == pkg }   // the TV's own by the allowlist, whatever its system flag reads
         if (!stock && snapshot != null && isPersonsLauncher(pkg, snapshot, state)) return REASON_YOUR_LAUNCHER
+        if (inHomeSwitch) return null
         if (stock || (snapshot != null && isHomeScreen(pkg, snapshot))) return DefaultPlanner.REASON_HOME_SCREEN
         if (pkg.value in Denylist.setupWizards || profile?.setupWraith == pkg) return DefaultPlanner.REASON_WIZARD_SECTION_ONLY
         return null

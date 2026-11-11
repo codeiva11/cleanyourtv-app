@@ -184,7 +184,7 @@ class ScriptedTv(initial: Snapshot = Samples.miTvSnapshot()) : TvSession {
             line.startsWith("pm default-state --user 0 ") -> setEnabled(pkg(4), EnabledState.DEFAULT)
             line == "pm list packages -d" -> ok(packages.filter { isOff(it.key) }.keys.joinToString("") { "package:${it.value}\n" })
             line == "pm list packages -f" -> ok(packages.keys.joinToString("") { "package:/data/app/${it.value}-1/base.apk=${it.value}\n" })
-            line.startsWith("pm uninstall --user 0 ") -> { val p = pkg(4); if (packages.remove(p) == null) fail("Failure [not installed]") else { claimants.removeAll { it.pkg == p }; if (home?.pkg == p) home = claimants.firstOrNull(); ok("Success") } }
+            line.startsWith("pm uninstall ") -> { val p = PackageName(tokens.last()); if (packages.remove(p) == null) fail("Failure [not installed]") else { claimants.removeAll { it.pkg == p }; if (home?.pkg == p) home = claimants.firstOrNull(); ok("Success") } }
             line.startsWith("pm install ") -> install(tokens.last())
             line.startsWith("pm path ") -> ok(if (pkg(2) in packages) "package:/data/app/${tokens[2]}-1/base.apk\n" else "")
             line.startsWith("dumpsys package ") && tokens.size == 3 && tokens[2] != "packages" -> ok(dump(pkg(2)))

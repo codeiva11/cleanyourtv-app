@@ -17,6 +17,7 @@ NOOP_INSTALL	pm install -r /data/local/tmp/cleanyourtv/noop.apk
 NOOP_UNINSTALL	pm uninstall tv.cleanyour.noop
 NOOP_CLEANUP	rm -f /data/local/tmp/cleanyourtv/noop.apk
 PS_ARGS	ps -A -o ARGS
+PS_RSS	ps -A -o RSS,ARGS
 WIFI_OWNERS	dumpsys wifi | grep -o -E -e 'cname=[^ ]*' -e 'Configured networks (Begin|End)' -e 'ID: -?[0-9]+ SSID'
 fileSha256(OVERLAY/config.json)	sha256sum '/sdcard/Android/data/com.gathin.tvhome/files/config.json'
 installedSha256(com.gathin.tvhome)	p=$(pm path 'com.gathin.tvhome' | grep base.apk | head -n 1); sha256sum "${p#package:}"

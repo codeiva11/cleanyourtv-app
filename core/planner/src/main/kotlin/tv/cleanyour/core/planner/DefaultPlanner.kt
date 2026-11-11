@@ -214,8 +214,12 @@ class DefaultPlanner(
         // a system app: `pm install-existing` brings a system app back, a deleted user-installed
         // app is gone for good, so that one is only ever disabled.
         fun switchOff(pkg: PackageName, group: String?, uninstallBloat: Boolean, policy: FailurePolicy = FailurePolicy.SKIP_IF_REFUSED) {
-            if (uninstallBloat && snapshot.packages[pkg]?.system == true) uninstall(pkg, group, policy)
-            else disable(pkg, group, policy)
+            if (uninstallBloat && snapshot.packages[pkg]?.system == true) {
+                step(Op.ClearPackage(pkg), null, group, "Clearing cache for ${name(pkg)}", FailurePolicy.CONTINUE)
+                uninstall(pkg, group, policy)
+            } else {
+                disable(pkg, group, policy)
+            }
         }
 
         fun enable(pkg: PackageName, group: String?, narration: String = "Switching ${name(pkg)} back on", policy: FailurePolicy = FailurePolicy.STOP_AND_ROLLBACK) =
@@ -317,17 +321,20 @@ class DefaultPlanner(
 
             // 1. Permanently uninstall every ad, recommendation, and Shop tab provider.
             //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct
-            //    provider of the "Shop" tab in com.google.android.tvlauncher. Unless it is uninstalled
-            //    via pm uninstall -k --user 0, the stock launcher queries it on reboot and restores
-            //    the Shop tab! All packages in STOCK_AD_AND_SHOP_PACKAGES are uninstalled here.
+            //    provider of the "Shop" tab in com.google.android.tvlauncher and com.google.android.apps.tv.launcherx.
+            //    Unless it is uninstalled via pm uninstall -k --user 0, the stock launcher queries it on reboot
+            //    and restores the Shop tab! All packages in STOCK_AD_AND_SHOP_PACKAGES that exist on this TV
+            //    (plus core Google ad/shop providers) are permanently uninstalled here.
             for (pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES) {
                 if (pkg in kept) continue
+                val isCore = pkg == ReaEngine.STOCK_TV_RECOMMENDATIONS || pkg == ReaEngine.GOOGLE_PLAY_MOVIES
+                if (!installed(pkg) && !isCore) continue
+
                 stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
                 if (installed(pkg)) {
                     uninstall(pkg, GROUP_STOCK_CLEAN)
                 } else {
-                    // Even if not reported as currently installed (e.g. uninstalled or disabled in another state),
-                    // ensure it is uninstalled with CONTINUE policy so it cannot revive on reboot.
+                    // Core package not reported currently installed: ensure it is uninstalled so it cannot revive on reboot.
                     step(Op.Uninstall(pkg), Prior(present = true), GROUP_STOCK_CLEAN, "Uninstalling ${name(pkg)}", FailurePolicy.CONTINUE)
                 }
                 step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
@@ -347,10 +354,14 @@ class DefaultPlanner(
             step(Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.DISCOVER_ENABLED]), GROUP_STOCK_CLEAN, "Disabling Discover/Shop tab", FailurePolicy.CONTINUE)
             step(Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0"), Prior(settingValue = snapshot.settings[SettingKey.SPONSORED_CONTENT]), GROUP_STOCK_CLEAN, "Disabling sponsored content", FailurePolicy.CONTINUE)
 
+            // Speed up TV performance by disabling UI animation lag
+            step(Op.SettingsPut(SettingKey.WINDOW_ANIMATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.WINDOW_ANIMATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up window animations", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.TRANSITION_ANIMATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.TRANSITION_ANIMATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up transition animations", FailurePolicy.CONTINUE)
+            step(Op.SettingsPut(SettingKey.ANIMATOR_DURATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.ANIMATOR_DURATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up animator duration", FailurePolicy.CONTINUE)
+
             // 4. CRITICAL: Clear launcher's cached ads and Shop/Discover tabs from its SQLite database,
             //    then restart it so the clean layout takes effect immediately.
-            val stock = stockLaunchers.firstOrNull { it.pkg == ReaEngine.STOCK_GOOGLE_LAUNCHER }
-                ?: Component(ReaEngine.STOCK_GOOGLE_LAUNCHER, ".MainActivity")
+            val stock = ReaEngine.resolveStockLauncherComponent(snapshot, stockLaunchers)
             step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.CONTINUE)
             step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.CONTINUE)
         }

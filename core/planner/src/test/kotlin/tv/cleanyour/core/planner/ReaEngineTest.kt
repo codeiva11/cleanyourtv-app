@@ -92,7 +92,25 @@ class ReaEngineTest {
         assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.FREEPLAY_ENABLED && it.value == "0" })
         assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.LIMIT_AD_TRACKING && it.value == "1" })
         assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvlauncher") })
-        assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == PackageName("com.google.android.tvlauncher") })
+        assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == PackageName("com.google.android.tvlauncher") && it.component.cls == ".MainActivity" })
+    }
+
+    @Test
+    fun buildsCleanStockHomeOpsForGoogleTvLauncherX() {
+        val launcherx = PackageName("com.google.android.apps.tv.launcherx")
+        val packages = mapOf(
+            launcherx to state(),
+            PackageName("com.google.android.tvrecommendations") to state(),
+            PackageName("com.google.android.videos") to state()
+        )
+        val snap = Samples.snapshot(packages = packages)
+
+        assertTrue(ReaEngine.isStockGoogleTvLauncher(snap))
+        val ops = ReaEngine.buildCleanStockHomeOps(snap)
+        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.tvrecommendations") })
+        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.videos") })
+        assertTrue(ops.any { it is Op.ClearPackage && it.pkg == launcherx })
+        assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == launcherx && it.component.cls == ".home.HomeActivity" })
     }
 
     // 2026-11-10: a Skyworth SWTV with no profile and no Google launcher showed
