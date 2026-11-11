@@ -31,7 +31,15 @@ object ReaEngine {
         ".ads.",
         ".ads",
         "adservice",
-        "sponsor"
+        "sponsor",
+        "banner",
+        "epop",
+        "e-pop",
+        "commercial",
+        "freepay",
+        "advertising",
+        "advertisement",
+        "adv."
     )
 
     // Heuristic signatures for Telemetry & Analytics trackers
@@ -40,27 +48,72 @@ object ReaEngine {
         "analytic",
         "telemetry",
         "diagnosing",
-        "crashlog"
+        "crashlog",
+        "userbehavior",
+        "metrics",
+        "usagestats",
+        "tracking",
+        "datacollect",
+        "userfeedback"
     )
 
-    // Heavy RAM use (2026-11-10): a system app running right now whose MEASURED RSS is
-    // at or above this floor is bloat by behaviour, not by name. 50 MB is the floor: on a
-    // 1-2 GB TV a single background system app holding 50 MB+ is heavy enough to matter, and
-    // small services stay out. Only a measured value nominates; the estimate never does.
+    // Heavy RAM use floor: on a 1-2 GB TV a single background system app holding 50 MB+
+    // is heavy enough to matter. Only measured RSS nominates.
     const val HEAVY_RAM_KB = 50 * 1024
 
-    // Known vendor partner bloatware and unnecessary background apps
+    // Core Android and SoC packages that must NEVER be nominated purely by RAM heuristic
+    private val SAFE_SYSTEM_PREFIXES = listOf(
+        "com.android.",
+        "android",
+        "com.google.android.ext.",
+        "com.google.android.modulemetadata",
+        "com.google.android.overlay.",
+        "com.google.android.permissioncontroller",
+        "com.google.android.packageinstaller",
+        "com.google.android.webview",
+        "com.google.android.inputmethod.",
+        "com.google.android.gms",
+        "com.google.android.gsf",
+        "com.mediatek.",
+        "com.droidlogic."
+    )
+
+    // Known vendor partner bloatware and unnecessary background apps across 47+ TV brands
     private val VENDOR_BLOAT_PREFIXES = listOf(
+        "com.google.android.videos",
+        "com.google.android.youtube.tvmusic",
+        "com.google.android.play.games",
+        "com.google.android.partnersetup",
         "com.google.android.leanbacklauncher.partnercustomizer",
         "com.smartdevice.leanbacklauncher.customizer",
-        "com.google.android.videos",
-        "com.google.android.partnersetup",
+        "com.smartdevice.acr.recommendation",
+        "com.smartdevice.epopplayer",
+        "com.smartdevice.emanual",
+        "com.smartdevice.tvworkwithalexa",
+        "com.smartdevice.dtv.icast",
+        "com.mstar.android.tv.disclaimercustomization",
+        "fusion.android.tv.demo",
+        "com.graymatrix.did",
         "com.xiaomi.mitv.upgrade",
         "com.xiaomi.mitv.shop",
         "com.xiaomi.mitv.media.vibes",
         "com.xiaomi.tv.gallery",
+        "com.xiaomi.mitv.advertise",
+        "com.miui.tv.analytics",
         "com.tcl.waterfall",
-        "com.tcl.partnercustomizer"
+        "com.tcl.partnercustomizer",
+        "com.tcl.tvmanager",
+        "com.tcl.useragreement",
+        "com.tcl.messagebox",
+        "com.oneplus.tv.experience",
+        "com.oneplus.tv.usagestats",
+        "com.sony.dtv.bravialife",
+        "com.sony.dtv.promotions",
+        "com.sony.dtv.samba",
+        "com.hisense.tv.recommendation",
+        "com.jamdeo.tv.vod",
+        "com.realme.tv.experience",
+        "com.android.tv.partnercustomizer"
     )
 
     data class Candidate(
@@ -149,16 +202,14 @@ object ReaEngine {
                 continue
             }
 
-            // 4. Heavy RAM use (2026-11-10): a SYSTEM app that is running right now and
-            // measured at or above HEAVY_RAM_KB is a candidate even when its name matches
-            // no signature. This is what finds bloat on an unknown TV (a Skyworth SWTV
-            // with no profile and no Google launcher), where the name rules find nothing
-            // and the plan comes out empty — "Nothing to switch off". Only measured RSS
-            // nominates; an app with no measurement, and every user-installed app, stays
-            // out. The planner's SwitchOffRule is still the second net (Denylist, the
-            // profile's never-disable, TV inputs, persistent apps, home, keyboard).
+            // 4. Heavy RAM use: a non-critical SYSTEM app running right now whose measured RSS >= HEAVY_RAM_KB.
+            // Core Android OS services (SAFE_SYSTEM_PREFIXES) are strictly excluded from RAM nomination
+            // to ensure TV OS boot stability (avoiding RescueParty recovery).
             val rssKb = ramByPackage[pkg]
-            if (snapshot.packages[pkg]?.system == true && rssKb != null && rssKb >= HEAVY_RAM_KB) {
+            if (snapshot.packages[pkg]?.system == true &&
+                rssKb != null &&
+                rssKb >= HEAVY_RAM_KB &&
+                SAFE_SYSTEM_PREFIXES.none { pkgStr.startsWith(it) }) {
                 candidates += Candidate(
                     pkg = pkg,
                     friendlyName = formatName(pkg.value),
@@ -207,7 +258,7 @@ object ReaEngine {
             groups += PackageGroup(
                 id = "rea_ram",
                 title = "Heavy RAM use (REA Auto-Found)",
-                default = GroupDefault.DISABLE,
+                default = GroupDefault.ASK,
                 packages = ram.map { PackageEntry(it.pkg, it.description) }
             )
         }

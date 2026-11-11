@@ -46,6 +46,14 @@ object Denylist {
         "com.google.android.gms" to "it is Google Play services",
         "com.google.android.gsf" to "it is Google Play services",
         "com.android.vending" to "it is the Play Store",
+        "com.android.externalstorage" to "it manages the TV's storage and filesystem mounts",
+        "com.smartdevice.factory" to "it is the TV panel factory service",
+        "com.smartdevice.firewall" to "it is a Skyworth core system service",
+        "com.smartdevice.duplebluetooth" to "it provides Bluetooth audio support",
+        "com.smartdevice.livetv" to "it provides the Live TV input",
+        "com.tianci.localmedia" to "it provides local media playback",
+        "com.mediatek.tvinput" to "it provides TV inputs",
+        "com.mediatek.wwtv.setupwizard" to "it is the TV setup wizard",
         // Upstream v2.7.0 lists switch these off by default (owner decision for 0.3.7, refuse more):
         // what accessibility, the remote and the TV stack need, never switched off by any profile.
         "com.google.android.marvin.talkback" to "it reads the screen aloud for people who need it",

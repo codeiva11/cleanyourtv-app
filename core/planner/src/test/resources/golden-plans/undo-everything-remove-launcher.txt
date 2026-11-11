@@ -11,7 +11,7 @@ step 3: group=home policy=CONTINUE narration=Showing the home screen
   'input' 'keyevent' '3'
 step 4: group=undo policy=CONTINUE narration=Removing the new home screen from the TV
   prior: present=true
-  'pm' 'uninstall' '--user' '0' 'com.gathin.tvhome'
+  'pm' 'uninstall' '-k' '--user' '0' 'com.gathin.tvhome'
 step 5: group=undo policy=CONTINUE narration=Tidying up
   'rm' '-f' '/data/local/tmp/cleanyourtv/home-ok-0e2ffd0489942e55'
 step 6: group=undo policy=CONTINUE narration=

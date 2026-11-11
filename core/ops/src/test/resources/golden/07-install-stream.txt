@@ -9,4 +9,4 @@ verify: Read kind=PACKAGE_DUMP pkg=com.gathin.tvhome
 verify_line: 'dumpsys' 'package' 'com.gathin.tvhome'
 prior: present=false
 inverse: Uninstall pkg=com.gathin.tvhome
-inverse_line: 'pm' 'uninstall' '--user' '0' 'com.gathin.tvhome'
+inverse_line: 'pm' 'uninstall' '-k' '--user' '0' 'com.gathin.tvhome'

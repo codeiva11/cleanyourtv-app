@@ -28,6 +28,7 @@ import tv.cleanyour.core.model.AdbException
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.ConnectionState
 import tv.cleanyour.core.model.DebugState
+import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.model.DeviceFacts
 import tv.cleanyour.core.model.Endpoint
 import tv.cleanyour.core.model.LauncherState
@@ -693,11 +694,14 @@ class SetupMachine(
         val host = (s.state.value as? ConnectionState.Connected)?.endpoint ?: existing?.endpoints?.firstOrNull()
         val name = existing?.nickname ?: doorTv?.friendlyName ?: doorTv?.model ?: facts.model
         val profile = (res as? ProfileResolution.Exact)?.profile
+        val snap = snapshot
+        val isCleanStockEligible = snap?.home?.resolved?.pkg?.value == "com.google.android.tvlauncher"
         val baseDraft = existing?.wizard ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
-            keepDebuggingOn = false, planId = null, updatedAtMs = now, cleanStockHome = true, autoDebloat = true, uninstallBloat = false)
-        val draft = if (snapshot?.packages?.containsKey(PackageName("com.google.android.tvlauncher")) == true) {
-            baseDraft.copy(cleanStockHome = true, autoDebloat = true, uninstallBloat = false)
-        } else baseDraft
+            keepDebuggingOn = false, planId = null, updatedAtMs = now,
+            cleanStockHome = isCleanStockEligible,
+            autoDebloat = isCleanStockEligible,
+            uninstallBloat = isCleanStockEligible)
+        val draft = baseDraft
         val tv = Tv(
             id = s.tvId, nickname = name, room = existing?.room, facts = facts,
             endpoints = listOfNotNull(host).ifEmpty { existing?.endpoints.orEmpty() },
@@ -724,11 +728,10 @@ class SetupMachine(
         if (fresh) snapshot = deps.runner.freshSnapshot(s)
         val snap = snapshot ?: return
         val draft = withoutRefusedChoices(record, record.wizard ?: return, snap)
-        val isStock = snap.packages.containsKey(PackageName("com.google.android.tvlauncher"))
         val choices = Choices(
             kept = draft.kept, extraOff = draft.extraOff,
             keepDebuggingOn = draft.keepDebuggingOn,
-            cleanStockHome = draft.cleanStockHome || isStock,
+            cleanStockHome = draft.cleanStockHome,
             autoDebloat = draft.autoDebloat,
             uninstallBloat = draft.uninstallBloat,
         )
@@ -976,6 +979,7 @@ class SetupMachine(
         val done = record.copy(
             wizard = null,
             launcher = if (homeOn && ourLauncher != null && ourSigner != null) LauncherState(ourLauncher.versionCode, ourSigner, digest ?: record.launcher?.overlayDigest, digest ?: record.launcher?.ourOverlayDigest)
+                else if (homeOn && f?.plan?.sections?.any { it.expectedHome == Launcher.home } == true) record.launcher ?: LauncherState(1L, Sha256("0".repeat(64)), null, null)
                 else record.launcher?.let { l -> if (digest != null) l.copy(overlayDigest = digest, ourOverlayDigest = digest) else l },
             lastSeenAt = deps.clock.nowMs(),
         )
@@ -1114,7 +1118,7 @@ class SetupMachine(
     }
 
 
-    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = true, autoDebloat = true, uninstallBloat = false)
+    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = false, autoDebloat = false, uninstallBloat = false)
 
     private suspend fun leaveOldHome() {
         val id = tvIdOf(state.value) ?: return
@@ -1451,8 +1455,8 @@ class SetupMachine(
             HomeOutcome.USER_SAID_NO -> StopCase.HOME_USER_SAID_NO
             HomeOutcome.TIMED_OUT -> StopCase.HOME_TIMED_OUT
             HomeOutcome.CONNECTION_LOST -> StopCase.HOME_PUT_BACK
+            HomeOutcome.WRONG_FOCUS -> if (settingsOpen) StopCase.HOME_SETTINGS_OPEN else StopCase.HOME_UNKNOWN
             else -> when {
-                settingsOpen -> StopCase.HOME_SETTINGS_OPEN
                 wraith -> StopCase.HOME_SETUPWRAITH
                 other != null -> StopCase.HOME_OTHER_LAUNCHER
                 else -> StopCase.HOME_UNKNOWN

@@ -73,7 +73,7 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             Rendered(op, emptyList(), Transfer.StreamInstall(op.blob, op.blob.size), Privilege.COMMUNITY,
                 Op.Read(ProbeKind.PACKAGE_DUMP, ReadArg.Pkg(pkgName(op.pkg))), T_INSTALL + op.blob.size / 50, CAP_DEFAULT)
         }
-        is Op.Uninstall -> Rendered(op, lines(line(PM, "uninstall", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
+        is Op.Uninstall -> Rendered(op, lines(line(PM, "uninstall", "-k", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)
         is Op.InstallExisting -> Rendered(op, lines(line(PM, "install-existing", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGES), T_PM, CAP_DEFAULT)

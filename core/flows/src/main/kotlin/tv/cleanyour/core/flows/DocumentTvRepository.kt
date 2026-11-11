@@ -96,8 +96,8 @@ object TvJson {
             wizard = o.objOrNull("wizard")?.let { w -> WizardDraft(w.int("step") ?: 0, Level.valueOf(w.str("level")!!),
                 w.strings("kept").map(::PackageName).toSet(), w.strings("extraOff").map(::PackageName).toSet(),
                 w.bool("keepDebuggingOn") ?: false, w.str("planId")?.let(::PlanId), w.long("updatedAtMs") ?: 0,
-                cleanStockHome = w.bool("cleanStockHome") ?: true,
-                autoDebloat = w.bool("autoDebloat") ?: true,
+                cleanStockHome = w.bool("cleanStockHome") ?: false,
+                autoDebloat = w.bool("autoDebloat") ?: false,
                 uninstallBloat = w.bool("uninstallBloat") ?: false) },
             lastSeenAt = o.long("lastSeenAt") ?: 0, debugging = DebugState.valueOf(o.str("debugging") ?: "UNKNOWN"),
         )

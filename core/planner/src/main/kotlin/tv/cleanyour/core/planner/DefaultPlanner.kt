@@ -311,9 +311,10 @@ class DefaultPlanner(
             val rec = ReaEngine.STOCK_TV_RECOMMENDATIONS
             if (installed(rec) && !isOff(rec)) {
                 stockRows += RowSummary(rec, name(rec), ramNote(rec, description(rec), ramByPackage), off = true, protected = false, whyProtected = null)
-                disable(rec, GROUP_STOCK_CLEAN, FailurePolicy.SKIP_IF_REFUSED, "Disabling TV recommendations ad provider")
+                switchOff(rec, GROUP_STOCK_CLEAN, uninstallBloat)
             } else if (!installed(rec)) {
-                step(Op.Disable(rec), null, GROUP_STOCK_CLEAN, "Disabling TV recommendations ad provider", FailurePolicy.CONTINUE)
+                if (uninstallBloat) step(Op.Uninstall(rec), Prior(present = true), GROUP_STOCK_CLEAN, "Uninstalling TV recommendations ad provider", FailurePolicy.CONTINUE)
+                else step(Op.Disable(rec), null, GROUP_STOCK_CLEAN, "Disabling TV recommendations ad provider", FailurePolicy.CONTINUE)
             }
             if (stockRows.isNotEmpty()) {
                 groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)

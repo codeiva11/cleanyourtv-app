@@ -3,7 +3,7 @@ op: Uninstall pkg=com.gathin.tvhome
 privilege: PROFILE_STEP
 timeout_ms: 30000
 stdout_cap: 65536
-line: 'pm' 'uninstall' '--user' '0' 'com.gathin.tvhome'
+line: 'pm' 'uninstall' '-k' '--user' '0' 'com.gathin.tvhome'
 transfer: none
 verify: Read kind=PACKAGES
 verify_line: 'pm' 'list' 'packages' '-f'
