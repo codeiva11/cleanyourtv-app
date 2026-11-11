@@ -98,7 +98,7 @@ object TvJson {
                 w.bool("keepDebuggingOn") ?: false, w.str("planId")?.let(::PlanId), w.long("updatedAtMs") ?: 0,
                 cleanStockHome = w.bool("cleanStockHome") ?: true,
                 autoDebloat = w.bool("autoDebloat") ?: true,
-                uninstallBloat = w.bool("uninstallBloat") ?: true) },
+                uninstallBloat = w.bool("uninstallBloat") ?: false) },
             lastSeenAt = o.long("lastSeenAt") ?: 0, debugging = DebugState.valueOf(o.str("debugging") ?: "UNKNOWN"),
         )
     }

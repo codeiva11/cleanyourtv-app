@@ -36,15 +36,11 @@ object ReaEngine {
 
     // Heuristic signatures for Telemetry & Analytics trackers
     private val TELEMETRY_SIGNATURES = listOf(
+        "analytics",
         "analytic",
         "telemetry",
-        "tracking",
-        "feedback",
-        "stat",
-        "metrics",
         "diagnosing",
-        "crashlog",
-        "logging"
+        "crashlog"
     )
 
     // Heavy RAM use (2026-11-10): a system app running right now whose MEASURED RSS is
@@ -90,6 +86,11 @@ object ReaEngine {
         val protectedPkgs = setOf(STOCK_GOOGLE_LAUNCHER) + stockPkgs
 
         for (pkg in snapshot.packages.keys) {
+            val state = snapshot.packages[pkg] ?: continue
+            // SAFETY: NEVER touch user-installed (third-party) apps!
+            // Only manufacturer preloaded system packages can be candidates for bloatware removal.
+            if (!state.system) continue
+
             val pkgStr = pkg.value.lowercase()
 
             // 1. Absolute Safety Check: Never target protected packages, system UI, inputs, or active launchers

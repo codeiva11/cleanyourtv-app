@@ -694,9 +694,9 @@ class SetupMachine(
         val name = existing?.nickname ?: doorTv?.friendlyName ?: doorTv?.model ?: facts.model
         val profile = (res as? ProfileResolution.Exact)?.profile
         val baseDraft = existing?.wizard ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
-            keepDebuggingOn = false, planId = null, updatedAtMs = now, cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
+            keepDebuggingOn = false, planId = null, updatedAtMs = now, cleanStockHome = true, autoDebloat = true, uninstallBloat = false)
         val draft = if (snapshot?.packages?.containsKey(PackageName("com.google.android.tvlauncher")) == true) {
-            baseDraft.copy(cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
+            baseDraft.copy(cleanStockHome = true, autoDebloat = true, uninstallBloat = false)
         } else baseDraft
         val tv = Tv(
             id = s.tvId, nickname = name, room = existing?.room, facts = facts,
@@ -1114,7 +1114,7 @@ class SetupMachine(
     }
 
 
-    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = true, autoDebloat = true, uninstallBloat = true)
+    private fun draftFor(record: Tv) = WizardDraft(3, record.level, emptySet(), emptySet(), false, null, deps.clock.nowMs(), cleanStockHome = true, autoDebloat = true, uninstallBloat = false)
 
     private suspend fun leaveOldHome() {
         val id = tvIdOf(state.value) ?: return
