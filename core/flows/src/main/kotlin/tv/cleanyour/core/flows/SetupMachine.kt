@@ -696,7 +696,11 @@ class SetupMachine(
         val profile = (res as? ProfileResolution.Exact)?.profile
         val snap = snapshot
         val isCleanStockEligible = snap?.home?.resolved?.pkg?.value == "com.google.android.tvlauncher"
-        val baseDraft = existing?.wizard ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
+        val baseDraft = existing?.wizard?.copy(
+            cleanStockHome = if (existing.wizard?.cleanStockHome == false) false else isCleanStockEligible,
+            autoDebloat = if (existing.wizard?.autoDebloat == false) false else isCleanStockEligible,
+            uninstallBloat = if (existing.wizard?.uninstallBloat == false) false else isCleanStockEligible
+        ) ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
             keepDebuggingOn = false, planId = null, updatedAtMs = now,
             cleanStockHome = isCleanStockEligible,
             autoDebloat = isCleanStockEligible,
