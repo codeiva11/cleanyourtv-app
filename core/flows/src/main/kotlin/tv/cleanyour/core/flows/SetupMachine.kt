@@ -425,7 +425,8 @@ class SetupMachine(
             is SetupIntent.SetCleanStockHome -> editDraft { it.copy(cleanStockHome = event.on) }
             is SetupIntent.SetUninstallBloat -> editDraft { it.copy(uninstallBloat = event.on) }
             SetupIntent.MakeItClean -> if (after is SetupState.Found && !mutableExtras.value.starting) {
-                mutableExtras.update { it.copy(starting = true) }
+                // The stale banner was read on this screen; the tap answers it.
+                mutableExtras.update { it.copy(starting = true, staleNotice = false) }
                 scope.launch {
                     // A Keep, dock or theme change just before the tap replans in the background; the
                     // run must be the plan with that change, never the one before it.

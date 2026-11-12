@@ -338,7 +338,12 @@ class DefaultPlanner(
             // 0. Ensure Google Play Store and external storage stay installed, enabled and safe
             val vending = PackageName("com.android.vending")
             val extStorage = PackageName("com.android.externalstorage")
-            step(Op.InstallExisting(vending), Prior(present = false), GROUP_STOCK_CLEAN, "Ensuring Google Play Store is installed", FailurePolicy.CONTINUE)
+            // 2026-11-12 stall (video): the prior records the ACTUAL presence (S3) — the
+            // pre-plan staleness check compares it against a fresh snapshot, so claiming
+            // "absent" for an installed Play Store paused every run STALE before step 0
+            // and the screen came back to Found with no error. The inverse of an
+            // InstallExisting is null whatever the prior, so this changes only the check.
+            step(Op.InstallExisting(vending), Prior(present = installed(vending)), GROUP_STOCK_CLEAN, "Ensuring Google Play Store is installed", FailurePolicy.CONTINUE)
             step(Op.Enable(vending), Prior(packageState = state(vending)?.enabled), GROUP_STOCK_CLEAN, "Ensuring Google Play Store is enabled", FailurePolicy.CONTINUE)
             step(Op.Enable(extStorage), Prior(packageState = state(extStorage)?.enabled), GROUP_STOCK_CLEAN, "Ensuring external storage is enabled", FailurePolicy.CONTINUE)
 

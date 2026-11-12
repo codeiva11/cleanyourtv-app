@@ -232,6 +232,8 @@ fun FoundScreen(
         }
         // The outcome first, above the fold: the TV keeps its own home screen.
         Banner(stringResource(R.string.kept_outcome), BannerTone.INFO, Modifier.padding(top = 16.dp), icon = CytIcons.Info)
+        // A stale run came back here with a fresh plan: say so, instead of a silent return.
+        if (extras.staleNotice) Banner(stringResource(R.string.found_stale_notice), BannerTone.WARNING, Modifier.padding(top = 12.dp))
         if (extras.unknownModel) {
             if (!nothingToDo) Body(stringResource(R.string.found_unknown_body), Modifier.padding(start = 4.dp, top = 12.dp))
             // 0.4.7: the report sent before, so the same report is not sent again by mistake.

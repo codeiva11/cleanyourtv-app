@@ -363,6 +363,20 @@ class PlannerTest {
         assertTrue(Op.RestartHome(vendor) in ops(p), "the launcher is restarted with them off")
     }
 
+    // 2026-11-12 stall (video): "Make it clean" spun on "Restore point saved" at 0% and
+    // came back to Found, twice. Clean Stock Home recorded the installed Play Store as
+    // absent, so the pre-plan staleness check saw "was absent, now installed" and paused
+    // the run STALE before step 0. The prior records the actual presence (S3).
+    @Test fun cleanStockHomeRecordsThePlayStoreAsInstalledWhenItIs() {
+        val vending = PackageName("com.android.vending")
+        val snap = snapshot(extra = mapOf(
+            vending to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "Play Store", false),
+        ))
+        val p = plan(setup(profile = null, choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        val step = p.steps.single { it.op is Op.InstallExisting && (it.op as Op.InstallExisting).pkg == vending }
+        assertEquals(true, step.prior?.present, "an installed Play Store is present before us")
+    }
+
     // RFC-SHOP-2 (2026-11-12): Undo everything puts a switched-off launcher ad component
     // back on — a component disable is a lasting change, so it is undone like a package
     // switch, in the package-states phase, with the enable as its inverse.
