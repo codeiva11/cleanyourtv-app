@@ -22,6 +22,8 @@ import tv.cleanyour.core.model.DebugState
 import tv.cleanyour.core.model.Level
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.SnapshotReason
+import tv.cleanyour.core.ops.ShellRenderer
+import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
@@ -32,6 +34,7 @@ import tv.cleanyour.testing.fixtures.FakeTvSession
 import tv.cleanyour.core.store.GateMethod
 import tv.cleanyour.testing.fixtures.FakeCredentialGate
 import tv.cleanyour.testing.fixtures.FakeEngine
+import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.Samples
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.seconds
@@ -673,6 +676,31 @@ class SetupMachineTest {
         val f = assertIs<SetupState.Found>(m.state.value)
         assertEquals(Level.CUSTOM, f.level)
         assertEquals(setOf(promoPkg), h.planner.requests.filterIsInstance<PlanRequest.Setup>().last().choices.kept)
+    }
+
+    // RFC-SHOP-7 (2026-11-12): a kept choice for a core Shop/ad package, recorded
+    // while the probe misread it as user-installed (videos, v0.4.7-48/-49 on Sunil's
+    // SWTV), is dropped from the stored draft when the plan would uninstall it by
+    // name — otherwise the stale choice vetoes section 2 forever. The plan uninstalls
+    // videos by name, and the draft stored on disk no longer keeps it.
+    @Test fun staleKeptChoiceForACorePackageIsDroppedFromTheDraft() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val videos = PackageName("com.google.android.videos")
+        val tv = Samples.tv().copy(wizard = WizardDraft(3, Level.CUSTOM, setOf(videos), emptySet(), false, null, 0))
+        h.tvs.upsert(tv)
+        val planner = DefaultPlanner(h.clock, FakeIdGen(), ShellRenderer(), "0.4.7")
+        h.planner.respond = { request, snap -> planner.plan(request, snap, h.facts, emptyList()) }
+        h.discovery.open5555[HOST] = true
+        val m = h.setup(backgroundScope, SetupStart.Continue(tv.id))
+        settle(); settle(700)
+        val f = assertIs<SetupState.Found>(m.state.value, h.logLines.joinToString("\n"))
+        // The plan uninstalls videos by name despite the stored kept choice.
+        assertTrue(f.plan.steps.map { it.op }.contains(Op.Uninstall(videos)), "the core package is uninstalled by name")
+        assertTrue(f.plan.steps.map { it.op }.contains(Op.ClearPackage(videos)), "the core package is cleared before uninstall")
+        // ...and the stored draft no longer keeps it.
+        val stored = h.tvs.tvs.value.single { it.id == tv.id }
+        assertFalse(stored.wizard?.kept?.contains(videos) == true, "the stale kept choice is dropped from the draft")
+        assertTrue(h.logLines.any { it.contains("dropped") && it.contains(videos.value) }, h.logLines.joinToString("\n"))
     }
 
     // RFC-W8-1: "No" on the identity line is an intent; it closes the session and records nothing.

@@ -492,23 +492,24 @@ class PlannerTest {
         assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == vendor }, "the launcher itself is never uninstalled")
     }
 
-    // RFC-SHOP-5 regression: a user-installed Shop/ad package (videos, bought from
-    // the Play Store by the person) is KEPT by Clean Stock Home — shown as kept with
-    // the reason, never uninstalled, cached-cleared or disabled — even though the
-    // REA engine and section 2 would otherwise remove it. The Setup path is the
-    // regression surface: a name, a RAM reading or APK evidence must never plan a
-    // user-installed app.
+    // RFC-SHOP-5 regression: a user-installed Shop/ad package (Play Games, bought
+    // from the Play Store by the person) is KEPT by Clean Stock Home — shown as kept
+    // with the reason, never uninstalled, cached-cleared or disabled — even though
+    // section 2 would otherwise remove it. The Setup path is the regression surface:
+    // a name, a RAM reading or APK evidence must never plan a user-installed app.
+    // RFC-SHOP-7: videos is the exception — a core package uninstalls by name even
+    // when the probe misreads it, so this test now uses Play Games, a non-core package.
     @Test fun cleanStockHomeKeepsAUserInstalledShopPackage() {
-        val videos = PackageName("com.google.android.videos")
+        val games = PackageName("com.google.android.play.games")
         val snap = snapshot(extra = mapOf(
-            videos to PackageState(EnabledState.ENABLED, false, 1, null, false, false, "Google Play Movies & TV", false),
+            games to PackageState(EnabledState.ENABLED, false, 1, null, false, false, "Play Games", false),
         ))
         val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
-        assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == videos }, "a user-installed app is never uninstalled")
-        assertTrue(ops(p).none { it is Op.Disable && it.pkg == videos }, "a user-installed app is never disabled")
-        assertTrue(ops(p).none { it is Op.ClearPackage && it.pkg == videos }, "a user-installed app is never cache-cleared for removal")
+        assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == games }, "a user-installed app is never uninstalled")
+        assertTrue(ops(p).none { it is Op.Disable && it.pkg == games }, "a user-installed app is never disabled")
+        assertTrue(ops(p).none { it is Op.ClearPackage && it.pkg == games }, "a user-installed app is never cache-cleared for removal")
         val stock = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }
-        val row = stock.rows.single { it.pkg == videos }
+        val row = stock.rows.single { it.pkg == games }
         assertFalse(row.off)
         assertTrue(row.protected)
         assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
@@ -772,42 +773,111 @@ class PlannerTest {
         assertTrue(ops(p).contains(Op.Uninstall(patchwall)))
     }
 
-    // Videos diagnosis (2026-11-12): Google Play Movies & TV proved a system app on
-    // Sunil's TV yet stayed, so a Shop/ad package kept as user-installed must say on its
-    // row what the probe actually saw — no new code removes it, it is already in
-    // STOCK_AD_AND_SHOP_PACKAGES; the row is the evidence for the next phone run.
+    // Videos diagnosis (2026-11-12): the -48 agent said "videos is a system app so
+    // Cleanup uninstalled it" — but videos survived on Sunil's TV. Reproduction from
+    // the capture: there is no package line for videos in the dumpsys dump, so its
+    // parsed versionCode is 0, flags empty, so the probe called it user-installed by the
+    // install path (/data/app is not a system path) — the kept row must say that, not
+    // hide it.
+    // RFC-SHOP-7: the probe note now applies to NON-core kept rows only — a core
+    // package uninstalls by name, so its row carries no note. This test uses Play
+    // Games, a non-core Shop/ad package, for the note; videos is covered by the
+    // by-name tests below.
     @Test fun keptShopPackageRowSaysWhatTheProbeSaw() {
-        val videos = PackageName("com.google.android.videos")
+        val games = PackageName("com.google.android.play.games")
         // No dumpsys entry (versionCode 0): the row says the install path decided.
-        val noEntry = snapshot(extra = mapOf(videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV")))
+        val noEntry = snapshot(extra = mapOf(games to on.copy(system = false, versionCode = 0, label = "Play Games")))
         val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = noEntry)
-        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == games }
         assertFalse(row.off)
         assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
         assertTrue(row.description.contains("no dumpsys entry"), row.description)
         // A real versionCode: dumpsys had an entry, no SYSTEM flag was seen.
-        val entry = snapshot(extra = mapOf(videos to on.copy(system = false, versionCode = 123456, label = "Google Play Movies & TV")))
+        val entry = snapshot(extra = mapOf(games to on.copy(system = false, versionCode = 123456, label = "Play Games")))
         val q = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = entry)
-        val row2 = q.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        val row2 = q.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == games }
         assertTrue(row2.description.contains("no SYSTEM flag seen"), row2.description)
         // A system app carries no such note.
-        val sys = snapshot(extra = mapOf(videos to on.copy(system = true, versionCode = 123456, label = "Google Play Movies & TV")))
+        val sys = snapshot(extra = mapOf(games to on.copy(system = true, versionCode = 123456, label = "Play Games")))
         val r = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = sys)
-        val row3 = r.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        val row3 = r.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == games }
         assertTrue(row3.off)
         assertFalse(row3.description.contains("probe:"), row3.description)
     }
 
+    // Profile-row version of the same diagnosis: Play Games is in the Mi TV debloat
+    // list, so its row lives in the mitv group — the group loop is where a
+    // profile-listed Shop package is kept as user-installed. RFC-SHOP-7: videos is
+    // core and carries no probe note any more; a non-core package keeps it.
     @Test fun profileRowForAKeptShopPackageCarriesTheProbeDiagnosis() {
-        val videos = PackageName("com.google.android.videos")
-        // Videos is in the Mi TV debloat list, so its row lives in the mitv group — the
-        // group loop is where a profile-listed Shop package is kept as user-installed.
-        val snap = snapshot(extra = mapOf(videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV")))
+        val games = PackageName("com.google.android.play.games")
+        val snap = snapshot(extra = mapOf(games to on.copy(system = false, versionCode = 0, label = "Play Games")))
         val p = plan(setup(), snapshot = snap)
-        val row = p.summary.groups.single { it.id == "mitv" }.rows.single { it.pkg == videos }
+        val row = p.summary.groups.single { it.id == "mitv" }.rows.single { it.pkg == games }
         assertFalse(row.off)
         assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
         assertTrue(row.description.contains("no dumpsys entry"), row.description)
+    }
+
+    // RFC-SHOP-7 (2026-11-12): core Shop/ad packages uninstall BY PACKAGE NAME —
+    // Sunil's order ("पैकेज नेम से युनिस्टल करो", replying to the Google Play Movies &
+    // TV photo). Videos proved a system app on his SWTV yet stayed on v0.4.7-48 and
+    // -49: the probe misread it as user-installed both times, and a kept choice
+    // recorded in that era would veto section 2 forever. Neither the probe's system
+    // reading nor a stored kept choice vetoes a core package any more. Non-core
+    // packages keep the user-installed guard (see
+    // cleanStockHomeKeepsAUserInstalledShopPackage, which now uses Play Games).
+    @Test fun corePackageIsUninstalledByNameEvenWhenTheProbeMisreadsIt() {
+        val videos = PackageName("com.google.android.videos")
+        val snap = snapshot(extra = mapOf(
+            videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV"),
+        ))
+        val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        assertTrue(row.off)
+        assertFalse(row.protected)
+        assertEquals(null, row.whyProtected)
+        assertFalse(row.description.contains("probe:"), row.description)
+        assertTrue(ops(p).contains(Op.ClearPackage(videos)))
+        assertTrue(ops(p).contains(Op.Uninstall(videos)))
+    }
+
+    @Test fun corePackageIsUninstalledByNameEvenWhenItIsKept() {
+        val videos = PackageName("com.google.android.videos")
+        val snap = snapshot(extra = mapOf(
+            videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV"),
+        ))
+        val p = plan(setup(choices = choices(kept = setOf(videos), cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        assertTrue(row.off)
+        assertFalse(row.protected)
+        assertEquals(null, row.whyProtected)
+        assertTrue(ops(p).contains(Op.ClearPackage(videos)))
+        assertTrue(ops(p).contains(Op.Uninstall(videos)))
+    }
+
+    // A genuine user-installed app is never touched by Clean Stock Home: it is in no
+    // STOCK list, in no group and in no leftover list, and no step names it.
+    @Test fun cleanStockHomeNeverTouchesAGenuineUserInstalledApp() {
+        val mine = PackageName("com.example.myplayer")
+        val snap = snapshot(extra = mapOf(
+            mine to PackageState(EnabledState.ENABLED, false, 1, null, false, false, "My Player", false),
+        ))
+        val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        assertTrue(ops(p).none { DefaultPlanner.packageOf(it) == mine }, "a user-installed app is never touched")
+        assertTrue(p.summary.groups.flatMap { it.rows }.none { it.pkg == mine })
+    }
+
+    // RFC-SHOP-7: Undo everything puts an uninstalled core package back — the
+    // install-existing inverse restores it, so uninstalling videos by name is
+    // reversible from the app's Undo.
+    @Test fun undoEverythingPutsAnUninstalledCorePackageBack() {
+        val videos = PackageName("com.google.android.videos")
+        val model = ModelTv(snapshot())
+        model.apply(Op.Uninstall(videos))   // the TV after the plan ran: videos gone
+        val changes = listOf(change(0, Op.Uninstall(videos), Prior(packageState = EnabledState.ENABLED, present = true)))
+        val p = plan(PlanRequest.UndoEverything(changes, removeLauncher = false), model.snapshot())
+        assertEquals(listOf(Op.InstallExisting(videos)), ops(p))
     }
 
     // A PatchWall feed that must stay on is governed by PatchWall, never by the leftover

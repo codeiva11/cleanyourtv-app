@@ -149,6 +149,10 @@ class DefaultPlanner(
         // A package the probe read as a system app is left alone: the note is only for
         // the kept-as-user-installed rows.
         fun diagnosedDescription(pkg: PackageName, desc: String): String {
+            // RFC-SHOP-7: a core package uninstalls by name, so what the probe read
+            // about it is irrelevant — the probe note never applies to one. The note
+            // stays only for non-core kept rows.
+            if (pkg == ReaEngine.STOCK_TV_RECOMMENDATIONS || pkg == ReaEngine.GOOGLE_PLAY_MOVIES) return desc
             if (pkg !in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES || state(pkg)?.system != false) return desc
             val note = if (state(pkg)?.versionCode == 0L) "probe: no dumpsys entry — kept by install path"
             else "probe: dumpsys entry found, no SYSTEM flag seen"
@@ -448,19 +452,25 @@ class DefaultPlanner(
             //    two core packages, which always get cleanup + uninstall so a package the snapshot
             //    missed cannot revive on reboot.
             for (pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES) {
-                if (pkg in kept) continue
                 val isCore = pkg == ReaEngine.STOCK_TV_RECOMMENDATIONS || pkg == ReaEngine.GOOGLE_PLAY_MOVIES
+                // RFC-SHOP-7 (2026-11-12): the two core Shop/ad packages uninstall BY
+                // PACKAGE NAME — Sunil's order ("पैकेज नेम से युनिस्टल करो"). Neither a
+                // stored kept choice nor the probe's system reading vetoes them: the probe
+                // misread videos as user-installed on his SWTV twice (v0.4.7-48/-49), and
+                // a kept entry recorded in that era would veto this loop forever. Non-core
+                // packages keep both gates — Play Games, YouTube Music TV and the rest
+                // can genuinely be user-installed, so the guard still applies to them.
+                if (pkg in kept && !isCore) continue
                 val isPresent = installed(pkg)
                 if (!isPresent && !isCore) continue
 
                 if (isPresent) {
                     // RFC-SHOP-5: an app the person installed themselves is never uninstalled
-                    // or disabled by this app — not even a Shop/ad package (videos, Play Games
-                    // and YouTube Music TV are all on the Play Store and can be user-installed).
-                    // It stays, shown as kept with the reason — and with the probe diagnosis
-                    // (2026-11-12: videos proved system on Sunil's TV yet stayed, so the row
-                    // must say what the probe actually saw).
-                    val userInstalled = state(pkg)?.system == false
+                    // or disabled by this app — but not a core package (RFC-SHOP-7 above):
+                    // the package name is the authority there. A non-core Shop/ad package
+                    // (Play Games, YouTube Music TV) can genuinely be user-installed, so
+                    // it stays, shown as kept with the reason and the probe diagnosis.
+                    val userInstalled = !isCore && state(pkg)?.system == false
                     stockRows += RowSummary(pkg, name(pkg), diagnosedDescription(pkg, ramNote(pkg, description(pkg), ramByPackage)), off = !userInstalled, protected = userInstalled, whyProtected = if (userInstalled) REASON_USER_INSTALLED else null)
                     if (!userInstalled) {
                         if (uninstallBloat) {

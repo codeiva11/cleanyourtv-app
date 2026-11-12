@@ -1110,6 +1110,12 @@ class SetupMachine(
     // wizard off" in 0.3.4 and 0.3.5, or an app that became a home screen or a protected package
     // since it was chosen) refused every plan for the TV, for good. It is dropped from the draft, so
     // the plan is made without it: one switch-off fewer, never one more. The draft is saved again.
+    // RFC-SHOP-7 (2026-11-12): the same staleness bites kept choices for the two core Shop/ad
+    // packages — a kept entry recorded while the probe misread one as user-installed (videos,
+    // v0.4.7-48/-49 on Sunil's SWTV) vetoes section 2 forever, because nothing ever cleaned
+    // kept. Clean Stock Home uninstalls a core package by name now, so when the plan would act
+    // on it (present, Clean Stock Home on and eligible for this TV) the stored kept is dropped
+    // too, and the draft is saved again either way.
     private suspend fun withoutRefusedChoices(record: Tv, draft: WizardDraft, snap: Snapshot): WizardDraft {
         val stocks = when (val r = resolution) {
             is ProfileResolution.Exact -> r.profile.stockLaunchers
@@ -1120,13 +1126,26 @@ class SetupMachine(
         val refused = draft.extraOff.filter { pkg ->
             pkg in snap.packages && SwitchOffRule.reason(pkg, snap.packages[pkg], profile(), snap, stocks) != null
         }.toSet()
-        if (refused.isEmpty()) return draft
-        val cleaned = draft.copy(extraOff = draft.extraOff - refused, updatedAtMs = deps.clock.nowMs())
+        val staleCoreKept = draft.kept.filter { pkg ->
+            (pkg == ReaEngine.STOCK_TV_RECOMMENDATIONS || pkg == ReaEngine.GOOGLE_PLAY_MOVIES) &&
+                pkg in snap.packages && draft.cleanStockHome && ReaEngine.isCleanStockHomeEligible(snap)
+        }.toSet()
+        if (refused.isEmpty() && staleCoreKept.isEmpty()) return draft
+        val cleaned = draft.copy(
+            extraOff = draft.extraOff - refused,
+            kept = draft.kept - staleCoreKept,
+            updatedAtMs = deps.clock.nowMs(),
+        )
         val updated = record.copy(wizard = cleaned)
         if (tv?.id == record.id) tv = updated
         attempt { deps.tvs.upsert(updated) }
-        deps.log.line("setup: ${refused.size} earlier choice${if (refused.size == 1) "" else "s"} left out, now protected on this TV: " +
+        if (refused.isNotEmpty()) deps.log.line("setup: ${refused.size} earlier choice${if (refused.size == 1) "" else "s"} left out, now protected on this TV: " +
             refused.sortedBy { it.value }.joinToString(", ") { LogCodes.reason(it.value, snap, deps.facts) })
+        // Core packages are Google's own Shop/ad packages, not the person's apps, so
+        // their names are logged plainly; the refused line above redacts user-installed
+        // names via LogCodes.reason for a different reason.
+        if (staleCoreKept.isNotEmpty()) deps.log.line("setup: ${staleCoreKept.size} kept choice${if (staleCoreKept.size == 1) "" else "s"} dropped, core package uninstalled by name: " +
+            staleCoreKept.sortedBy { it.value }.joinToString(", ") { it.value })
         mutableExtras.update { it.copy(draft = cleaned) }
         return cleaned
     }
