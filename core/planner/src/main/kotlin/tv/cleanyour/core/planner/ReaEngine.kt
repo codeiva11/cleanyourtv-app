@@ -26,9 +26,14 @@ object ReaEngine {
     val STOCK_TV_RECOMMENDATIONS = PackageName("com.google.android.tvrecommendations")
     val GOOGLE_PLAY_MOVIES = PackageName("com.google.android.videos")
 
-    // The essential packages that power the Shop tab, video ads, and sponsored recommendations on stock launcher.
-    // Crucially includes com.google.android.videos (Google Play Movies & TV) which directly injects the "Shop"
-    // tab into the Google TV / Android TV stock launcher.
+    // The essential packages that power the Shop tab's content, video ads, and sponsored
+    // recommendations on a stock launcher. Crucially includes com.google.android.videos
+    // (Google Play Movies & TV) — the film store behind the Shop tab's pages (the
+    // launcher's own strings say "Google Play Movies & TV is now the Shop tab").
+    // The tab button itself is drawn by the launcher's own MainActivity (its
+    // shop_tab_title resource, REA 2026-11-12 on the shipped tvlauncher APK), so
+    // uninstalling videos removes the content source; the tab's pages are switched off
+    // separately in TVLAUNCHER_SHOP_COMPONENTS below.
     // Disabling (pm disable-user --user 0) sets enabled="3" in package-restrictions.xml so Android OS
     // NEVER relaunches them on reboot, and pm clear wipes their cache completely.
     val STOCK_AD_AND_SHOP_PACKAGES = listOf(
@@ -58,9 +63,11 @@ object ReaEngine {
 
     // RFC-SHOP-2 (2026-11-12): the stock launcher's own ad components, proven from the
     // decompiled tvlauncher v7.7.15 manifest (tv_launcher_ad_analysis.md, Method 2 Step 3/4).
-    // These four render or feed the Shop tab and the sponsored rows from inside the launcher,
+    // These four render or feed the sponsored rows and ad dialogs from inside the launcher,
     // so uninstalling tvrecommendations/videos alone cannot stop them: on boot the launcher
-    // re-reads its own ad signals and re-draws the Shop tab. Switching them off with
+    // re-reads its own ad signals and re-draws them. They do NOT render the Shop tab
+    // itself — that is the launcher's MainActivity, and its pages are the two Shop
+    // activities in TVLAUNCHER_SHOP_COMPONENTS below. Switching them off with
     // `pm disable-user` (Op.DisableComponent) persists across reboot in the per-user
     // package-restrictions, and Undo switches them back on. Only tvlauncher's are hardcoded:
     // launcherx's component class names are not proven anywhere in this repo, so launcherx is
@@ -72,6 +79,24 @@ object ReaEngine {
         Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.home.AdsPersonalizationAwarenessNotificationReceiver"),
     )
 
+    // RFC-SHOP-3 (2026-11-12): the stock launcher's own Shop content activities, proven
+    // from the shipped tvlauncher v6.4.6 manifest by REA (decode-android-resources on the
+    // APKPure APK; the same APK carries the photo's exact texts — shop_tab_title "Shop",
+    // "Customize your Home screen", "Customize your recommendations", "Favorite Apps",
+    // "Welcome to Shop" — so this IS the launcher drawing the Shop tab on the Skyworth
+    // SWTV). The tab button is drawn by the launcher's MainActivity; its pages are these
+    // two activities — the Library page (the tv.google.com/library deep link) and the
+    // TVOD (buy/rent) player. The four ad components above never touch them, so a plan
+    // that only switched those off left the Shop destination intact after every reboot.
+    // Switching them off with `pm disable-user` persists across reboot in the per-user
+    // package-restrictions, and Undo switches them back on. If a TV's tvlauncher version
+    // renamed them, the disable fails and the step continues (CONTINUE) — the deep scan's
+    // "shop"/"tvod" signatures below still catch whatever Shop components that version has.
+    val TVLAUNCHER_SHOP_COMPONENTS: List<Component> = listOf(
+        Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.shop.library.LibraryPageActivity"),
+        Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.shop.tvodplayer.TvodPlayerActivity"),
+    )
+
     // RFC-SHOP-2: substrings (lowercased) that mark a launcher component as ad machinery,
     // applied ONLY to the components of a launcher package (the resolved home plus the stock
     // Google launchers), never to the whole TV. "ima" is deliberately absent: it matches
@@ -80,6 +105,11 @@ object ReaEngine {
         "ads", "adssignals", "sponsor", "banner", "promos", "promotion", "recommend",
         "featuredcarousel", "infeed", "instream", "targetedpromotion", "adpersonalization",
         "doubleclick", "advertis", "commercial", "freepay", "whythisad",
+        // RFC-SHOP-3: "shop" and "tvod" (transactional video-on-demand = buy/rent) mark a
+        // launcher component as Shop machinery — tvlauncher's shop.* activities and
+        // launcherx's KinetoscopeTvodActivity. Applied ONLY to launcher packages, never to
+        // the whole TV.
+        "shop", "tvod",
     )
 
     // Heuristic signatures for Ads & Recommendation daemons
@@ -475,10 +505,11 @@ object ReaEngine {
     /**
      * RFC-SHOP-2: the launcher components to switch off so the Shop tab and sponsored banners
      * cannot come back after a reboot. Two sources, both evidence-only:
-     *  - the four manifest-proven tvlauncher components, when tvlauncher is installed;
-     *  - the deep scan's components of a launcher package whose class matches an ad signature
-     *    (boot receivers, services, activities, providers the dump lists), when the scan
-     *    actually saw them.
+     *  - the manifest-proven tvlauncher components, when tvlauncher is installed — the four
+     *    ad components plus the two Shop content activities (TVLAUNCHER_SHOP_COMPONENTS);
+     *  - the deep scan's components of a launcher package whose class matches an ad or Shop
+     *    signature (boot receivers, services, activities, providers the dump lists), when
+     *    the scan actually saw them.
      * Never: the resolved home component itself; any class with "mainactivity" or
      * "homeactivity" in it (the home screen's own entry points); a component the dump already
      * shows disabled (Undo must never switch on something that was off before the plan);
@@ -499,7 +530,7 @@ object ReaEngine {
             // A hardcoded component the dump already shows disabled was off before us: never
             // plan it — Undo must never switch on something that was off before the plan.
             val disabled = scan?.evidence?.get(STOCK_TV_LAUNCHER)?.disabledComponents?.toSet().orEmpty()
-            for (c in TVLAUNCHER_AD_COMPONENTS) if (c !in disabled && allowed(c)) out += c
+            for (c in TVLAUNCHER_AD_COMPONENTS + TVLAUNCHER_SHOP_COMPONENTS) if (c !in disabled && allowed(c)) out += c
         }
         if (scan != null) {
             for (pkg in launchers) {
@@ -526,10 +557,11 @@ object ReaEngine {
      * and restarts it, and a person's launcher is theirs to keep as it is. So is ours: our
      * launcher draws no Shop tab, so there is nothing to clean while it is home. Otherwise
      * a Google launcher installed qualifies (the old rule), or any OTHER resolved home — a
-     * vendor launcher like the Skyworth SWTV's Coocaa one, whose Shop tab is served by the
-     * vendor's own ad packages (section 2 uninstalls them) and its ad components (section
-     * 3.5 disables them). A TV whose HOME is undecided (a placeholder or nothing) and has no
-     * Google launcher has no home to clean.
+     * vendor launcher, whose ad packages section 2 uninstalls and whose ad components
+     * section 3.5 disables. (The Skyworth SWTV's Shop tab is drawn by tvlauncher itself,
+     * Google's Android TV home — REA 2026-11-12 decoded the photo's exact texts from the
+     * shipped tvlauncher APK — not by the Coocaa launcher.) A TV whose HOME is undecided
+     * (a placeholder or nothing) and has no Google launcher has no home to clean.
      */
     fun isCleanStockHomeEligible(snapshot: Snapshot): Boolean {
         if (FireOs.isFireOs(snapshot.facts, snapshot)) return false

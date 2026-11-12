@@ -329,9 +329,9 @@ class PlannerTest {
     // Issue #2 (A1): Fire OS's own home screen is never switched off, and nothing of the new home
     // screen is installed for it: an unlisted Fire TV Edition set on the Amazon sure set, with the
     // TV's facts naming nothing (here the reference TV's), is caught by its packages.
-    // RFC-SHOP-2 (2026-11-12): the Skyworth SWTV's Coocaa launcher has no Google launcher at
-    // all, so the old gate skipped the whole clean-up and the Shop tab came back after every
-    // reboot. On a vendor home the clean-up runs: the vendor ad packages are uninstalled, the
+    // RFC-SHOP-2 (2026-11-12): a vendor home with no Google launcher at all — the old gate
+    // skipped the whole clean-up there and the Shop tab came back after every reboot. On a
+    // vendor home the clean-up runs: the vendor ad packages are uninstalled, the
     // launcher's ad components are switched off (section 3.5), and the vendor launcher itself is
     // cleared and restarted — never uninstalled or disabled as a package.
     @Test fun cleanStockHomeRunsOnAVendorHomeAndSwitchesOffItsAdComponents() {
@@ -361,6 +361,37 @@ class PlannerTest {
         assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == vendor.pkg }, "the launcher itself is never uninstalled")
         assertTrue(Op.ClearPackage(vendor.pkg) in ops(p), "the launcher's cached ads are cleared")
         assertTrue(Op.RestartHome(vendor) in ops(p), "the launcher is restarted with them off")
+    }
+
+    // RFC-SHOP-3 (2026-11-12): Clean Stock Home switches off the launcher's own Shop
+    // content activities (REA: the Shop tab is drawn by tvlauncher's MainActivity and its
+    // pages are LibraryPageActivity + TvodPlayerActivity) alongside the four ad
+    // components — and the launcher itself is never disabled or uninstalled.
+    @Test fun cleanStockHomeSwitchesOffTheLauncherShopActivities() {
+        val tvlauncher = PackageName("com.google.android.tvlauncher")
+        val snap = snapshot(extra = mapOf(
+            tvlauncher to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "Android TV Home", false),
+        ))
+        val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        val shop = listOf(
+            Component(tvlauncher, "com.google.android.tvlauncher.shop.library.LibraryPageActivity"),
+            Component(tvlauncher, "com.google.android.tvlauncher.shop.tvodplayer.TvodPlayerActivity"),
+        )
+        val disabled = ops(p).filterIsInstance<Op.DisableComponent>().map { it.component }
+        assertTrue(shop.all { it in disabled }, disabled.toString())
+        assertTrue(ReaEngine.TVLAUNCHER_AD_COMPONENTS.all { it in disabled }, disabled.toString())
+        assertTrue(ops(p).none { it is Op.Disable && it.pkg == tvlauncher }, "the launcher itself is never disabled")
+        assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == tvlauncher }, "the launcher itself is never uninstalled")
+    }
+
+    // RFC-SHOP-3 (2026-11-12): Undo everything puts a switched-off launcher Shop activity
+    // back on too — the Shop destination comes back with the rest of the clean-up.
+    @Test fun undoEverythingPutsALauncherShopActivityBackOn() {
+        val c = Component(PackageName("com.google.android.tvlauncher"),
+            "com.google.android.tvlauncher.shop.tvodplayer.TvodPlayerActivity")
+        val changes = listOf(change(0, Op.DisableComponent(c), Prior()))
+        val p = plan(PlanRequest.UndoEverything(changes, removeLauncher = false), snapshot())
+        assertEquals(listOf(Op.EnableComponent(c)), ops(p))
     }
 
     // 2026-11-12 stall (video): "Make it clean" spun on "Restore point saved" at 0% and

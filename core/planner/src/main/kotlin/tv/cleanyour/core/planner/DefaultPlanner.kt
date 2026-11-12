@@ -313,12 +313,14 @@ class DefaultPlanner(
             keepNames = choices.kept.filter { installed(it) }.map { name(it) }.sorted()
 
             // RFC-SHOP-2 (2026-11-12): the gate is any home the plan knows how to clean — a
-            // vendor launcher's Shop tab (the Skyworth SWTV's Coocaa one) is served by the
-            // vendor's own ad packages and ad components, not by Google's, so gating on a Google
-            // launcher skipped the whole clean-up on that TV and the Shop tab came back after
-            // every reboot. Fire OS and a person's launcher are out by construction
-            // (ReaEngine.isCleanStockHomeEligible, and the Fire OS / person's-launcher tests
-            // pin that).
+            // vendor launcher's Shop tab is served by the vendor's own ad packages and ad
+            // components, not by Google's, so gating on a Google launcher skipped the whole
+            // clean-up on such a TV and the Shop tab came back after every reboot. (The
+            // Skyworth SWTV itself runs tvlauncher — Google's Android TV home, REA 2026-11-12
+            // decoded the photo's exact texts from the shipped tvlauncher APK — so its Shop
+            // tab is Google's, not the Coocaa launcher's.) Fire OS and a person's launcher
+            // are out by construction (ReaEngine.isCleanStockHomeEligible, and the Fire OS /
+            // person's-launcher tests pin that).
             if (choices.cleanStockHome && ReaEngine.isCleanStockHomeEligible(snapshot)) {
                 cleanStockHome(stockLaunchers, choices.kept, req.ramByPackage, choices.uninstallBloat, req.deepScan)
             }
@@ -357,11 +359,15 @@ class DefaultPlanner(
                 step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
             }
 
-            // 2. Permanently uninstall every ad, recommendation, and Shop tab provider.
-            //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct
-            //    provider of the "Shop" tab in com.google.android.tvlauncher and com.google.android.apps.tv.launcherx.
-            //    Unless it is uninstalled via pm uninstall -k --user 0, the stock launcher queries it on reboot
-            //    and restores the Shop tab! All packages in STOCK_AD_AND_SHOP_PACKAGES that exist on this TV
+            // 2. Permanently uninstall every ad, recommendation, and Shop tab content provider.
+            //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the film
+            //    store behind the "Shop" tab's pages in com.google.android.tvlauncher and
+            //    com.google.android.apps.tv.launcherx (the launcher's own strings say "Google
+            //    Play Movies & TV is now the Shop tab"). Uninstalling it removes the Shop
+            //    content source. The tab button itself is drawn by the launcher's MainActivity
+            //    (its shop_tab_title, REA 2026-11-12), so section 3.5 also switches off the
+            //    launcher's own Shop activities — the tab's pages cannot open after a reboot.
+            //    All packages in STOCK_AD_AND_SHOP_PACKAGES that exist on this TV
             //    (plus core Google ad/shop providers) are permanently uninstalled here — but only the
             //    ones the TV actually has appear on screen and get a command (task 4), except the
             //    two core packages, which always get cleanup + uninstall so a package the snapshot
@@ -402,10 +408,14 @@ class DefaultPlanner(
             step(Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.DISCOVER_ENABLED]), GROUP_STOCK_CLEAN, "Permanent block: Discover & Shop tab injection", FailurePolicy.CONTINUE)
             step(Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0"), Prior(settingValue = snapshot.settings[SettingKey.SPONSORED_CONTENT]), GROUP_STOCK_CLEAN, "Permanent block: sponsored promotional channels", FailurePolicy.CONTINUE)
 
-            // 3.5. RFC-SHOP-2 (2026-11-12): switch off the launcher's own ad components, so the
-            // Shop tab and the sponsored banners cannot come back after a reboot. This is the step
-            // the 0.4.7-33 plan never had: nothing before it persisted past a boot, because the
-            // launcher re-reads its ad signals on start and re-draws its Shop tab from the server.
+            // 3.5. RFC-SHOP-2 (2026-11-12): switch off the launcher's own ad and Shop
+            // components, so the sponsored banners and the Shop pages cannot come back after a
+            // reboot. This is the step the 0.4.7-33 plan never had: nothing before it persisted
+            // past a boot, because the launcher re-reads its ad signals and server-driven
+            // config (Phenotype) on start and re-draws its Shop tab. The tab button itself is
+            // the launcher's MainActivity and has no component to switch off — the two Shop
+            // activities in TVLAUNCHER_SHOP_COMPONENTS are its pages, and switching them off
+            // is the strongest proven lever for the tab's destination (RFC-SHOP-3).
             // A component disable writes into the per-user package-restrictions, so it survives a
             // reboot; the launcher itself is never touched, and its home component and its
             // main/home activities are excluded by findLauncherAdComponents. ORDER: after the

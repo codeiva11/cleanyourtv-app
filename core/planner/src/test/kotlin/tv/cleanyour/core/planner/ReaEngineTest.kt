@@ -251,9 +251,10 @@ class ReaEngineTest {
         assertTrue(candidates.isEmpty())
     }
 
-    // RFC-SHOP-2 (2026-11-12): the four manifest-proven tvlauncher ad components are the ones
-    // to switch off when tvlauncher is installed — none of them is the home component, so all
-    // four are found, even with no deep scan at all.
+    // RFC-SHOP-2 (2026-11-12) + RFC-SHOP-3: the manifest-proven tvlauncher components are
+    // the ones to switch off when tvlauncher is installed — the four ad components and the
+    // two Shop content activities — none of them is the home component, so all six are
+    // found, even with no deep scan at all.
     @Test
     fun launcherAdComponentsAreTheHardcodedTvlauncherOnes() {
         val launcher = PackageName("com.google.android.tvlauncher")
@@ -261,7 +262,21 @@ class ReaEngineTest {
             packages = mapOf(launcher to state(), PackageName("com.google.android.tvrecommendations") to state()),
             home = HomeResolution(Component(launcher, ".MainActivity"), listOf(HomeClaimant(Component(launcher, ".MainActivity"), 2))),
         )
-        assertEquals(ReaEngine.TVLAUNCHER_AD_COMPONENTS.sortedBy { it.flat }, ReaEngine.findLauncherAdComponents(null, snap))
+        assertEquals((ReaEngine.TVLAUNCHER_AD_COMPONENTS + ReaEngine.TVLAUNCHER_SHOP_COMPONENTS).sortedBy { it.flat }, ReaEngine.findLauncherAdComponents(null, snap))
+    }
+
+    // RFC-SHOP-3 (2026-11-12): the two Shop content activities are the manifest-proven
+    // tvlauncher Shop pages (REA on the shipped v6.4.6 APK) — the Library page and the
+    // TVOD (buy/rent) player — not the home component and not the ad components.
+    @Test
+    fun launcherShopComponentsAreTheManifestProvenTvlauncherOnes() {
+        assertEquals(
+            listOf(
+                Component(PackageName("com.google.android.tvlauncher"), "com.google.android.tvlauncher.shop.library.LibraryPageActivity"),
+                Component(PackageName("com.google.android.tvlauncher"), "com.google.android.tvlauncher.shop.tvodplayer.TvodPlayerActivity"),
+            ),
+            ReaEngine.TVLAUNCHER_SHOP_COMPONENTS,
+        )
     }
 
     // RFC-SHOP-2: a launcher with no hardcoded components (a Coocaa launcher on the Skyworth
@@ -285,11 +300,13 @@ class ReaEngineTest {
             ),
         ))
         // ImageLoader matches no signature ("ima" is deliberately not one: it matches "Image"
-        // as well as the ads SDK, and every IMA class also contains "ads"). .ShopActivity is
-        // not ad machinery either — "shop" is not a signature.
+        // as well as the ads SDK, and every IMA class also contains "ads"). .ShopActivity IS
+        // Shop machinery — "shop" is a signature (RFC-SHOP-3) — so the vendor launcher's
+        // Shop activity is switched off too.
         assertEquals(
             listOf(
                 Component(vendor, ".AdsBootReceiver"),
+                Component(vendor, ".ShopActivity"),
                 Component(vendor, "com.vendor.launcher.ads.AdProvider"),
                 Component(vendor, "com.vendor.launcher.ads.AdService"),
             ),
@@ -310,12 +327,14 @@ class ReaEngineTest {
         val scan = DeepScanResult(1, mapOf(launcher to DeepScanEvidence(disabledComponents = listOf(off))))
         val found = ReaEngine.findLauncherAdComponents(scan, snap)
         assertFalse(off in found)
-        assertEquals(3, found.size)
+        assertEquals(5, found.size)
     }
 
-    // RFC-SHOP-2: Clean Stock Home is eligible on any home the plan knows how to clean — a
-    // vendor launcher's Shop tab is served by the vendor's own ad packages and ad components,
-    // not by Google's — and out on Fire OS, on a person's launcher, and on ours.
+    // RFC-SHOP-2: Clean Stock Home is eligible on any home the plan knows how to clean —
+    // a vendor launcher's ad packages and ad components are what sections 2 and 3.5
+    // remove — and out on Fire OS, on a person's launcher, and on ours. (The Skyworth
+    // SWTV's Shop tab is drawn by tvlauncher itself, not by the Coocaa launcher — REA
+    // 2026-11-12 decoded the photo's exact texts from the shipped tvlauncher APK.)
     @Test
     fun cleanStockHomeIsEligibleOnAnyHomeExceptFireOsAPersonsLauncherOrOurs() {
         val vendor = PackageName("com.vendor.launcher")
