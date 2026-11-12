@@ -384,6 +384,54 @@ class PlannerTest {
         assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == tvlauncher }, "the launcher itself is never uninstalled")
     }
 
+    // RFC-SHOP-4 (2026-11-12): the post-0.4.7-37 Skyworth SWTV — every Shop/ad package
+    // already uninstalled, only the launcher's own Shop components left to switch off.
+    // Before this fix the plan held the Shop DisableComponent steps but the Found screen
+    // counted off == 0 (section 3.5 made no group row) and showed "Nothing to switch off"
+    // with no "Make it clean" button, so the steps could never run.
+    @Test fun cleanStockHomeCountsLauncherShopComponentsWhenEveryPackageIsGone() {
+        val tvlauncher = PackageName("com.google.android.tvlauncher")
+        val snap = snapshot(extra = mapOf(
+            tvlauncher to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "Android TV Home", false),
+        )).let { s ->
+            val keep = setOf(tvlauncher, PackageName("com.android.vending"), PackageName("com.android.externalstorage"))
+            s.copy(packages = s.packages.filterKeys { it in keep })
+                .let { it.copy(contentHash = tv.cleanyour.core.store.SnapshotCodec.hash(it)) }
+        }
+        val p = plan(setup(profile = null, choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        val shop = listOf(
+            Component(tvlauncher, "com.google.android.tvlauncher.shop.library.LibraryPageActivity"),
+            Component(tvlauncher, "com.google.android.tvlauncher.shop.tvodplayer.TvodPlayerActivity"),
+        )
+        val disabled = ops(p).filterIsInstance<Op.DisableComponent>().map { it.component }
+        assertTrue(shop.all { it in disabled }, disabled.toString())
+        // The Found screen's count: one aggregate row for the launcher's components.
+        val stock = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }
+        assertEquals(1, stock.off, "the launcher's components count as switch-offs")
+        assertEquals(1, stock.rows.size)
+        assertEquals(1, p.summary.groups.sumOf { it.off })
+        assertEquals(tvlauncher, stock.rows.single().pkg)
+    }
+
+    // RFC-SHOP-4: the LIST sheet keeps a launcher by package — a kept launcher's
+    // components stay on, and its row reads off = false, so "Make it clean" is not
+    // offered for work the person asked to keep.
+    @Test fun cleanStockHomeKeepsALauncherWhoseComponentsAreKept() {
+        val tvlauncher = PackageName("com.google.android.tvlauncher")
+        val snap = snapshot(extra = mapOf(
+            tvlauncher to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "Android TV Home", false),
+        )).let { s ->
+            val keep = setOf(tvlauncher, PackageName("com.android.vending"), PackageName("com.android.externalstorage"))
+            s.copy(packages = s.packages.filterKeys { it in keep })
+                .let { it.copy(contentHash = tv.cleanyour.core.store.SnapshotCodec.hash(it)) }
+        }
+        val p = plan(setup(profile = null, choices = choices(kept = setOf(tvlauncher), cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        assertTrue(ops(p).none { it is Op.DisableComponent }, "a kept launcher's components stay on")
+        val stock = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }
+        assertEquals(0, stock.off)
+        assertEquals(0, p.summary.groups.sumOf { it.off })
+    }
+
     // RFC-SHOP-3 (2026-11-12): Undo everything puts a switched-off launcher Shop activity
     // back on too — the Shop destination comes back with the rest of the clean-up.
     @Test fun undoEverythingPutsALauncherShopActivityBackOn() {

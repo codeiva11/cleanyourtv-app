@@ -397,8 +397,24 @@ class DefaultPlanner(
                 }
             }
 
+            // RFC-SHOP-4 (2026-11-12): the launcher components section 3.5 switches off are
+            // switch-offs too — a plan whose only work left is those components must not read
+            // as "Nothing to switch off". After a run uninstalled every Shop/ad package there
+            // is no present package to make a row, so the Found screen counted off == 0 and
+            // hid "Make it clean" even though the plan held the Shop DisableComponent steps
+            // (the post-0.4.7-37 Skyworth SWTV: the plan was non-empty, the screen said
+            // nothing to do). One row per launcher package (the list keys rows by package,
+            // so two rows of one package would collide): the row names the launcher, its
+            // note lists the components' short class names. A kept launcher's components
+            // are not switched off — the row stays, off = false, like a kept package.
+            val launcherComponents = ReaEngine.findLauncherAdComponents(deepScan, snapshot)
+            for ((pkg, components) in launcherComponents.groupBy { it.pkg }) {
+                val names = components.map { it.cls.substringAfterLast('.') }.sorted().joinToString(", ")
+                stockRows += RowSummary(pkg, name(pkg), "Switching off: $names", off = pkg !in kept, protected = false, whyProtected = null)
+            }
+
             if (stockRows.isNotEmpty()) {
-                groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
+                groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.count { it.off }, stockRows.size, stockRows)
             }
 
             // 3. Block every known ad/shop setting so the Shop tab, Discover row and video ads stay gone permanently
@@ -423,7 +439,10 @@ class DefaultPlanner(
             // and BEFORE the launcher's data wipe and restart (section 4), so the restart runs
             // with them already off. CONTINUE on failure: a TV whose firmware refuses a component
             // must not lose the rest of the clean-up.
-            for (c in ReaEngine.findLauncherAdComponents(deepScan, snapshot)) {
+            for (c in launcherComponents) {
+                // RFC-SHOP-4: the LIST sheet keeps a launcher by package — a kept launcher's
+                // components stay on, so the row above reads off = false and the step is skipped.
+                if (c.pkg in kept) continue
                 step(Op.DisableComponent(c), null, GROUP_STOCK_CLEAN, "Switching off the launcher ad component ${c.flat}", FailurePolicy.CONTINUE)
             }
 
