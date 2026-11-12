@@ -307,7 +307,7 @@ object ApkScanner {
 
             var packageName = pkg.value
             var versionCode = 0L
-            val components = mutableListOf<ParsedComponent>()
+            val components = mutableListOf<MutableComponent>()
             var current: MutableComponent? = null
             var inFilter = false
             var pos = 8 + poolSize
