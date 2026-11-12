@@ -250,6 +250,12 @@ object ReaEngine {
         // SWTV Settings screen: system app, v1.218, 635 kB). A TV browser nobody browses
         // on; small and low-RAM, so rule 4 never catches it — it needs the name.
         "com.qjy.browser",
+        // Skyworth's Swaiot smart-home app (verified 2026-11-12 from Sunil's own SWTV
+        // Settings screen: Settings shows "Enable", so it is already disabled — disabled
+        // is not uninstalled, it still shows in Settings > Apps until pm uninstall
+        // --user 0 removes it). The EXACT package only: a "com.security." prefix is too
+        // broad and could match a security service another TV genuinely needs.
+        "com.security.SwaiotTV",
     )
 
     data class Candidate(
@@ -336,7 +342,10 @@ object ReaEngine {
                 continue
             }
 
-            if (VENDOR_BLOAT_PREFIXES.any { pkgStr.startsWith(it) }) {
+            // Prefixes are matched against the lowercased package (pkgStr), so the entry
+            // is lowercased too: a mixed-case package such as com.security.SwaiotTV would
+            // otherwise never match its own entry.
+            if (VENDOR_BLOAT_PREFIXES.any { pkgStr.startsWith(it.lowercase()) }) {
                 candidates += Candidate(
                     pkg = pkg,
                     friendlyName = formatName(pkg.value),
@@ -418,7 +427,7 @@ object ReaEngine {
             if (pkg in STOCK_AD_AND_SHOP_PACKAGES ||
                 ADS_SIGNATURES.any { pkgStr.contains(it) } ||
                 TELEMETRY_SIGNATURES.any { pkgStr.contains(it) } ||
-                VENDOR_BLOAT_PREFIXES.any { pkgStr.startsWith(it) }) {
+                VENDOR_BLOAT_PREFIXES.any { pkgStr.startsWith(it.lowercase()) }) {
                 suspects += pkg
             }
         }

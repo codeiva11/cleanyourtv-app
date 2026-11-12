@@ -713,5 +713,98 @@ class PlannerTest {
         assertEquals(1, all.count { it.pkg == ads }, "an REA candidate lives in its REA group, not the leftover list")
         assertTrue(p.summary.groups.none { it.id == DefaultPlanner.GROUP_CUSTOM })
     }
+
+    // com.security.SwaiotTV, verified on Sunil's Skyworth SWTV (Settings shows "Enable",
+    // so it is already disabled — disabled is not uninstalled). The hardcoded
+    // VENDOR_BLOAT_PREFIXES entry nominates it, so it never needs the leftover list —
+    // with REA on it lands in the bloat group, off by default. The entry is the exact
+    // package: a "com.security." prefix is too broad for this namespace.
+    @Test fun swaiotTvIsNominatedByNameAndNeverNeedsTheLeftoverList() {
+        val swaiot = PackageName("com.security.SwaiotTV")
+        val snap = smallSnapshot(mapOf(swaiot to on.copy(label = "Swaiot TV")))
+        val p = plan(setup(choices = choices(autoDebloat = true)), snapshot = snap)
+        assertTrue(p.summary.groups.none { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }, "a named vendor app is matched, not leftover")
+        val row = p.summary.groups.flatMap { it.rows }.single { it.pkg == swaiot }
+        assertTrue(row.off, "the vendor IoT app is auto-nominated")
+        assertEquals("rea_bloat", p.summary.groups.single { g -> g.rows.any { it.pkg == swaiot } }.id)
+        assertTrue(ops(p).contains(Op.Disable(swaiot)))
+        // With REA off a named candidate is shown nowhere, as before — matched, not leftover.
+        val hidden = plan(setup(), snapshot = snap)
+        assertTrue(hidden.summary.groups.none { g -> g.rows.any { it.pkg == swaiot } })
+    }
+
+    // Disabled is not done: pm uninstall --user 0 works on a disabled package, so with
+    // uninstall on a disabled system app is offered for uninstall instead of skipped.
+    @Test fun disabledSwaiotTvIsStillOfferedForUninstall() {
+        val swaiot = PackageName("com.security.SwaiotTV")
+        val snap = smallSnapshot(mapOf(swaiot to on.copy(enabled = EnabledState.DISABLED_USER, label = "Swaiot TV")))
+        val p = plan(setup(choices = choices(autoDebloat = true, uninstallBloat = true)), snapshot = snap)
+        val row = p.summary.groups.flatMap { it.rows }.single { it.pkg == swaiot }
+        assertTrue(row.off)
+        assertTrue(ops(p).contains(Op.ClearPackage(swaiot)))
+        assertTrue(ops(p).contains(Op.Uninstall(swaiot)))
+        // With uninstall off, a disabled app is still done: nothing to switch off.
+        val q = plan(setup(choices = choices(autoDebloat = true)), snapshot = snap)
+        assertTrue(q.summary.groups.flatMap { it.rows }.none { it.pkg == swaiot })
+        assertTrue(ops(q).none { DefaultPlanner.packageOf(it) == swaiot })
+    }
+
+    @Test fun disabledUnmatchedAppIsOfferedForUninstallInTheLeftoverList() {
+        val old = PackageName("com.example.oldapp")
+        val snap = smallSnapshot(mapOf(old to on.copy(enabled = EnabledState.DISABLED_USER, label = "Old App")))
+        // Uninstall on: the disabled app is listed (kept by default) and selectable.
+        val p = plan(setup(choices = choices(uninstallBloat = true)), snapshot = snap)
+        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.single()
+        assertEquals(old, row.pkg)
+        assertFalse(row.off)
+        val selected = plan(setup(choices = choices(extraOff = setOf(old), uninstallBloat = true)), snapshot = snap)
+        assertEquals(listOf(Op.ClearPackage(old), Op.Uninstall(old)), ops(selected))
+    }
+
+    @Test fun disabledProfileAppIsOfferedForUninstall() {
+        val patchwall = PackageName("com.mitv.tvhome.atv")
+        val snap = snapshot(disabled = setOf(patchwall.value)).withSystemApps(listOf(patchwall))
+        val p = plan(setup(choices = choices(uninstallBloat = true)), snapshot = snap)
+        val row = p.summary.groups.single { it.id == "mitv" }.rows.single { it.pkg == patchwall }
+        assertTrue(row.off)
+        assertTrue(ops(p).contains(Op.Uninstall(patchwall)))
+    }
+
+    // Videos diagnosis (2026-11-12): Google Play Movies & TV proved a system app on
+    // Sunil's TV yet stayed, so a Shop/ad package kept as user-installed must say on its
+    // row what the probe actually saw — no new code removes it, it is already in
+    // STOCK_AD_AND_SHOP_PACKAGES; the row is the evidence for the next phone run.
+    @Test fun keptShopPackageRowSaysWhatTheProbeSaw() {
+        val videos = PackageName("com.google.android.videos")
+        // No dumpsys entry (versionCode 0): the row says the install path decided.
+        val noEntry = snapshot(extra = mapOf(videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV")))
+        val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = noEntry)
+        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        assertFalse(row.off)
+        assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
+        assertTrue(row.description.contains("no dumpsys entry"), row.description)
+        // A real versionCode: dumpsys had an entry, no SYSTEM flag was seen.
+        val entry = snapshot(extra = mapOf(videos to on.copy(system = false, versionCode = 123456, label = "Google Play Movies & TV")))
+        val q = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = entry)
+        val row2 = q.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        assertTrue(row2.description.contains("no SYSTEM flag seen"), row2.description)
+        // A system app carries no such note.
+        val sys = snapshot(extra = mapOf(videos to on.copy(system = true, versionCode = 123456, label = "Google Play Movies & TV")))
+        val r = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = sys)
+        val row3 = r.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }.rows.single { it.pkg == videos }
+        assertTrue(row3.off)
+        assertFalse(row3.description.contains("probe:"), row3.description)
+    }
+
+    @Test fun profileRowForAKeptShopPackageCarriesTheProbeDiagnosis() {
+        val videos = PackageName("com.google.android.videos")
+        val group = tv.cleanyour.core.model.PackageGroup("x", "Extras", tv.cleanyour.core.model.GroupDefault.DISABLE, listOf(tv.cleanyour.core.model.PackageEntry(videos, null)))
+        val snap = smallSnapshot(mapOf(videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV")))
+        val p = plan(setup(profile = profile(extraGroups = listOf(group))), snapshot = snap)
+        val row = p.summary.groups.single { it.id == "x" }.rows.single()
+        assertFalse(row.off)
+        assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
+        assertTrue(row.description.contains("no dumpsys entry"), row.description)
+    }
 }
 

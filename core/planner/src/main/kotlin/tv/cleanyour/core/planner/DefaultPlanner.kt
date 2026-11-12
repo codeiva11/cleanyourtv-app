@@ -134,6 +134,26 @@ class DefaultPlanner(
             val note = "about ${kb / 1024} MB in RAM"
             return if (base.isEmpty()) note.replaceFirstChar { it.titlecase() } else "$base · $note"
         }
+
+        // Videos diagnosis (2026-11-12): a Shop/ad package the probe read as user-installed
+        // is kept with this note on its row, so the next phone run shows WHY instead of us
+        // guessing — kept by the probe's verdict, kept in Customise, or never pressed
+        // "Make it clean". The frozen Snapshot carries no code path, so the note reads the
+        // one signal it does carry: versionCode is 0 exactly when no version line parsed —
+        // in practice, when dumpsys had no entry for the package at all (no codePath, no
+        // version, no flags), and the install path decided. A real versionCode means
+        // dumpsys had an entry and no SYSTEM flag was seen — either the flags were empty
+        // (the path decided) or the app genuinely lacks SYSTEM. Saying the code path
+        // outright needs a frozen-model change (codePath + flags-present on PackageState),
+        // which needs an RFC and Fable sign-off, so this note is the diagnostic until then.
+        // A package the probe read as a system app is left alone: the note is only for
+        // the kept-as-user-installed rows.
+        fun diagnosedDescription(pkg: PackageName, desc: String): String {
+            if (pkg !in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES || state(pkg)?.system != false) return desc
+            val note = if (state(pkg)?.versionCode == 0L) "probe: no dumpsys entry — kept by install path"
+            else "probe: dumpsys entry found, no SYSTEM flag seen"
+            return if (desc.isEmpty()) note.replaceFirstChar { it.titlecase() } else "$desc · $note"
+        }
         // An uninstall's line on the progress screen. The old home screen app (an earlier build's
         // install, removed by Undo) has no label on the TV, so AppNames would make its name from
         // the package ("Gathin Home", QA 0.4.5-beta1).
@@ -289,9 +309,15 @@ class DefaultPlanner(
                     // build switched it off): "We keep these" would be untrue, and Manage's Switched
                     // off still lists it with Put back (RF-STORES-030 S1).
                     // The same for a PatchWall feed that is off already: the plan leaves it as it is.
-                    if ((why == null || why == REASON_UPDATES || why == REASON_PATCHWALL_FEED) && isOff(pkg)) continue
+                    // EXCEPT when the plan would uninstall it: pm uninstall --user 0 works on a
+                    // disabled package, so a disabled system app is not done — with uninstallBloat
+                    // on it is offered for uninstall, and only a disable is never offered for one
+                    // already off (2026-11-12: com.security.SwaiotTV was disabled by an earlier run
+                    // and still showed in Settings > Apps until uninstalled).
+                    if ((why == null || why == REASON_UPDATES || why == REASON_PATCHWALL_FEED) && isOff(pkg) &&
+                        !(choices.uninstallBloat && state(pkg)?.system == true && why == null)) continue
                     val off = why == null && wanted
-                    rows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), req.ramByPackage), off, why != null, why)
+                    rows += RowSummary(pkg, name(pkg), diagnosedDescription(pkg, ramNote(pkg, description(pkg), req.ramByPackage)), off, why != null, why)
                     if (off) { switchOff(pkg, group.id, choices.uninstallBloat); disabled++ }
                 }
                 groups += GroupSummary(group.id, group.title, rows.count { it.off }, rows.size, rows)
@@ -305,16 +331,20 @@ class DefaultPlanner(
             // snapshot, so those apps surface by their own display names — no package name
             // is hardcoded anywhere in the feature. Default kept: a row is off only when
             // the person tapped it (extraOff). A user-installed app never appears here
-            // (system only, and protectedReason refuses one before it could be planned),
-            // and a row already off is Managed's, not this list's. No APK size: the frozen
-            // Snapshot carries no code path, so the row shows the package name plus the
-            // measured RAM when the probe measured it, and the name plus the package when
-            // it did not.
+            // (system only, and protectedReason refuses one before it could be planned).
+            // A row already off is Managed's, not this list's — except when uninstallBloat
+            // is on: pm uninstall --user 0 works on a disabled package, so a disabled
+            // system app with nothing left to switch off still has something to uninstall,
+            // and it is offered here (2026-11-12: com.security.SwaiotTV, disabled by an
+            // earlier run, still showed in Settings > Apps until uninstalled). No APK size:
+            // the frozen Snapshot carries no code path, so the row shows the package name
+            // plus the measured RAM when the probe measured it, and the name plus the
+            // package when it did not.
             val matchedPkgs = candidates.map { it.pkg }.toSet() + ReaEngine.STOCK_AD_AND_SHOP_PACKAGES
             val homePkg = snapshot.home.resolved?.pkg
             val leftoverPkgs = snapshot.packages.keys
                 .filter { pkg -> pkg !in covered && pkg !in matchedPkgs && pkg != homePkg }
-                .filter { pkg -> val st = state(pkg); st != null && st.system && !isOff(pkg) }
+                .filter { pkg -> val st = state(pkg); st != null && st.system && (!isOff(pkg) || choices.uninstallBloat) }
                 .filter { pkg -> protectedReason(pkg, profile, stockLaunchers, packageGroups) == null }
                 .sortedWith(compareByDescending<PackageName> { req.ramByPackage[it] ?: 0 }.thenBy { it.value })
             val leftoverRows = mutableListOf<RowSummary>()
@@ -421,9 +451,11 @@ class DefaultPlanner(
                     // RFC-SHOP-5: an app the person installed themselves is never uninstalled
                     // or disabled by this app — not even a Shop/ad package (videos, Play Games
                     // and YouTube Music TV are all on the Play Store and can be user-installed).
-                    // It stays, shown as kept with the reason.
+                    // It stays, shown as kept with the reason — and with the probe diagnosis
+                    // (2026-11-12: videos proved system on Sunil's TV yet stayed, so the row
+                    // must say what the probe actually saw).
                     val userInstalled = state(pkg)?.system == false
-                    stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = !userInstalled, protected = userInstalled, whyProtected = if (userInstalled) REASON_USER_INSTALLED else null)
+                    stockRows += RowSummary(pkg, name(pkg), diagnosedDescription(pkg, ramNote(pkg, description(pkg), ramByPackage)), off = !userInstalled, protected = userInstalled, whyProtected = if (userInstalled) REASON_USER_INSTALLED else null)
                     if (!userInstalled) {
                         if (uninstallBloat) {
                             // pm clear force-stops the app first, then the uninstall removes it for
