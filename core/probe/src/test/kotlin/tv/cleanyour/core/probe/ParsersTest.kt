@@ -27,12 +27,18 @@ class ParsersTest {
                 ProbeScripts.copyApk(p("com.gathin.tvhome"), ProbeScripts.signerPath("0123456789abcdef"), 16L * 1024 * 1024).text,
             "signerCleanup(signer-0123456789abcdef.apk)" to ProbeScripts.signerCleanup(ProbeScripts.signerPath("0123456789abcdef")).text,
             "deepPackageDump(com.gathin.tvhome)" to ProbeScripts.deepPackageDump(p("com.gathin.tvhome")).text,
+            // RFC-SHOP-5: the APK scan copies one APK under the fixed apkscan.apk name
+            // (40 MiB cap — launcherx is 35 MB) and removes it whatever happened.
+            "copyApk(com.gathin.tvhome, apkscan.apk, 41943040)" to
+                ProbeScripts.copyApk(p("com.gathin.tvhome"), ProbeScripts.apkScanPath(), ApkScanSignatures.MAX_APK_BYTES).text,
+            "signerCleanup(apkscan.apk)" to ProbeScripts.signerCleanup(ProbeScripts.apkScanPath()).text,
         )
         assertEquals(golden, actual)
         // Printable ASCII only, and no write verb outside the lines that must write (all of them in
         // the app's TMP folder, or the no-op package).
         val writers = setOf("SCREENSHOT", "SCREENSHOT_CLEANUP", "MKDIR_TMP", "NOOP_INSTALL", "NOOP_UNINSTALL", "NOOP_CLEANUP",
-            "copyApk(com.gathin.tvhome, signer-0123456789abcdef.apk, 16777216)", "signerCleanup(signer-0123456789abcdef.apk)")
+            "copyApk(com.gathin.tvhome, signer-0123456789abcdef.apk, 16777216)", "signerCleanup(signer-0123456789abcdef.apk)",
+            "copyApk(com.gathin.tvhome, apkscan.apk, 41943040)", "signerCleanup(apkscan.apk)")
         for ((k, v) in actual) {
             assertTrue(v.all { it in ' '..'~' }, k)
             if (k !in writers) assertFalse(Regex("\\b(disable|enable|install|uninstall|rm|put|delete|setprop|reboot|am|input|svc|mkdir|cp|mv|dd)\\b").containsMatchIn(v.replace("--brief", "")), "$k writes: $v")

@@ -1,8 +1,15 @@
 package tv.cleanyour.core.planner
 
+import tv.cleanyour.core.model.ApkScanComponent
+import tv.cleanyour.core.model.ApkScanFinding
+import tv.cleanyour.core.model.ApkScanIds
+import tv.cleanyour.core.model.ApkScanMatch
+import tv.cleanyour.core.model.ApkScanMatchKind
 import tv.cleanyour.core.model.ArtifactRef
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanEvidence
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.Module
 import tv.cleanyour.core.model.ModuleVersion
@@ -440,6 +447,75 @@ class PlannerTest {
         val changes = listOf(change(0, Op.DisableComponent(c), Prior()))
         val p = plan(PlanRequest.UndoEverything(changes, removeLauncher = false), snapshot())
         assertEquals(listOf(Op.EnableComponent(c)), ops(p))
+    }
+
+    // --- RFC-SHOP-5: the on-phone APK scan + the user-installed guard -------------
+
+    // A vendor launcher's Shop component, found by the APK scan from the TV's own
+    // APK — no hardcoded list, no profile entry — is planned as a DisableComponent
+    // step, and the launcher itself is never disabled or uninstalled.
+    @Test fun cleanStockHomePlansScannedShopComponents() {
+        val vendor = PackageName("com.vendor.launcher")
+        val home = Component(vendor, ".MainActivity")
+        val snap = snapshot(
+            home = home,
+            claimants = listOf(home),
+            extra = mapOf(
+                vendor to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "Vendor Home", false),
+            ),
+        )
+        val shop = Component(vendor, "com.vendor.launcher.shop.ShopActivity")
+        val finding = ApkScanFinding(
+            pkg = vendor,
+            apkSizeBytes = 12_000_000,
+            components = listOf(
+                ApkScanComponent(
+                    shop, "ads",
+                    listOf(ApkScanMatch(ApkScanIds.SHOP_ACTIVITY, ApkScanMatchKind.COMPONENT, shop.cls, "manifest component ${shop.cls} is a REA-proven Shop activity", "ads")),
+                ),
+            ),
+        )
+        val scan = DeepScanResult(1, mapOf(vendor to DeepScanEvidence(apkScan = finding)))
+        val p = plan(setup(profile = null, choices = choices(cleanStockHome = true, uninstallBloat = true), deepScan = scan), snapshot = snap)
+        val disabled = ops(p).filterIsInstance<Op.DisableComponent>().map { it.component }
+        assertTrue(shop in disabled, disabled.toString())
+        assertTrue(ops(p).none { it is Op.Disable && it.pkg == vendor }, "the launcher itself is never disabled")
+        assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == vendor }, "the launcher itself is never uninstalled")
+    }
+
+    // RFC-SHOP-5 regression: a user-installed Shop/ad package (videos, bought from
+    // the Play Store by the person) is KEPT by Clean Stock Home — shown as kept with
+    // the reason, never uninstalled, cached-cleared or disabled — even though the
+    // REA engine and section 2 would otherwise remove it. The Setup path is the
+    // regression surface: a name, a RAM reading or APK evidence must never plan a
+    // user-installed app.
+    @Test fun cleanStockHomeKeepsAUserInstalledShopPackage() {
+        val videos = PackageName("com.google.android.videos")
+        val snap = snapshot(extra = mapOf(
+            videos to PackageState(EnabledState.ENABLED, false, 1, null, false, false, "Google Play Movies & TV", false),
+        ))
+        val p = plan(setup(choices = choices(cleanStockHome = true, uninstallBloat = true)), snapshot = snap)
+        assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == videos }, "a user-installed app is never uninstalled")
+        assertTrue(ops(p).none { it is Op.Disable && it.pkg == videos }, "a user-installed app is never disabled")
+        assertTrue(ops(p).none { it is Op.ClearPackage && it.pkg == videos }, "a user-installed app is never cache-cleared for removal")
+        val stock = p.summary.groups.single { it.id == DefaultPlanner.GROUP_STOCK_CLEAN }
+        val row = stock.rows.single { it.pkg == videos }
+        assertFalse(row.off)
+        assertTrue(row.protected)
+        assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
+    }
+
+    // The same guard in the Custom list and in the explicit SwitchOff request: a
+    // user-installed app the person (or a stale choice) names is refused, never
+    // switched off.
+    @Test fun userInstalledAppInExtraOffIsRefused() {
+        val mine = PackageName("com.example.myplayer")
+        val snap = snapshot(extra = mapOf(
+            mine to PackageState(EnabledState.ENABLED, false, 1, null, false, false, "My Player", false),
+        ))
+        val reasons = refused(setup(choices = choices(extraOff = setOf(mine))), snapshot = snap)
+        assertTrue(reasons.single().contains(DefaultPlanner.REASON_USER_INSTALLED), reasons.toString())
+        assertTrue(refused(PlanRequest.SwitchOff(setOf(mine)), snapshot = snap).single().contains(DefaultPlanner.REASON_USER_INSTALLED))
     }
 
     // 2026-11-12 stall (video): "Make it clean" spun on "Restore point saved" at 0% and

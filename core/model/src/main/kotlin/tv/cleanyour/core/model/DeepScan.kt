@@ -23,6 +23,11 @@ data class DeepScanEvidence(
     val services: List<String> = emptyList(),
     val activities: List<String> = emptyList(),
     val disabledComponents: List<Component> = emptyList(),
+    // RFC-SHOP-5: what the on-phone APK scan found inside this package's own APK
+    // (ApkScanFinding) — manifest components, provider authorities, dex/arsc
+    // strings matched against the REA-derived signatures. Null when the APK was
+    // not pulled or the scan found nothing: evidence-absent, never an error.
+    val apkScan: ApkScanFinding? = null,
 ) {
     val hasRevivalEvidence: Boolean get() = bootReceivers.isNotEmpty() || providers.isNotEmpty() || jobs > 0
 }

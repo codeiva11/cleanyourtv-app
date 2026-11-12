@@ -93,6 +93,11 @@ object ProbeScripts {
     val screenPath = RemotePath(RemoteDir.TMP, listOf(SCREEN_FILE))
     val noopPath = RemotePath(RemoteDir.TMP, listOf(NOOP_FILE))
     // A per-copy name (RF-LAUNCHER-240 F11): two snapshots on one session never touch each other's copy.
+    // RFC-SHOP-5: the fixed TMP name the APK scan copies one APK under (copyApk +
+    // pull, then signerCleanup removes it). One name is enough: the scan runs its
+    // pulls in sequence inside one deepScan, and the copy is removed whatever
+    // happened — the same pattern signerOf uses for its own copy.
+    fun apkScanPath() = RemotePath(RemoteDir.TMP, listOf("apkscan.apk"))
     fun signerPath(token: String) = RemotePath(RemoteDir.TMP, listOf("signer-$token.apk"))
     fun signerCleanup(path: RemotePath) = ShellLine("rm -f ${q(path.absolute)}")
     val overlayConfig = RemotePath(RemoteDir.OVERLAY, listOf("config.json"))

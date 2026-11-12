@@ -27,3 +27,5 @@ watchdogAlive(0123456789abcdef)	pgrep -f '[c]leanyourtv-rollback-0123456789abcde
 deepPackageDump(com.gathin.tvhome)	dumpsys package 'com.gathin.tvhome'
 copyApk(com.gathin.tvhome, signer-0123456789abcdef.apk, 16777216)	mkdir -p /data/local/tmp/cleanyourtv && p=$(pm path 'com.gathin.tvhome' | grep base.apk | head -n 1) && [ -n "$p" ] && [ "$(stat -c %s "${p#package:}")" -le 16777216 ] && cp "${p#package:}" '/data/local/tmp/cleanyourtv/signer-0123456789abcdef.apk'
 signerCleanup(signer-0123456789abcdef.apk)	rm -f '/data/local/tmp/cleanyourtv/signer-0123456789abcdef.apk'
+copyApk(com.gathin.tvhome, apkscan.apk, 41943040)	mkdir -p /data/local/tmp/cleanyourtv && p=$(pm path 'com.gathin.tvhome' | grep base.apk | head -n 1) && [ -n "$p" ] && [ "$(stat -c  "${p#package:}")" -le 41943040 ] && cp "${p#package:}" '/data/local/tmp/cleanyourtv/apkscan.apk'
+signerCleanup(apkscan.apk)	rm -f '/data/local/tmp/cleanyourtv/apkscan.apk'

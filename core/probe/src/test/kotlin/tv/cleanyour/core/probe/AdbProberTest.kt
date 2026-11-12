@@ -309,4 +309,39 @@ class AdbProberTest {
         assertTrue(recEv.providers.isEmpty())
         assertEquals(0, recEv.jobs)
     }
+
+    // RFC-SHOP-5: the deep scan pulls a suspect's APK and scans it on the phone — a
+    // Shop component in the TV's own APK is found with its evidence, and the copy is
+    // removed whatever happened.
+    @Test fun deepScanScansAnApk() = runBlocking<Unit> {
+        val launcher = p("com.google.android.tvlauncher")
+        val apk = ApkFixtures.launcherApk()
+        val rec = Recording()
+            .on(ProbeScripts.DEEP_BOOT_RECEIVERS.text, "")
+            .on(ProbeScripts.DEEP_JOBS.text, "")
+            .on(ProbeScripts.deepPackageDump(launcher).text, "")
+            .on(ProbeScripts.copyApk(launcher, ProbeScripts.apkScanPath(), ApkScanSignatures.MAX_APK_BYTES).text, "")
+        val s = FakeTvSession(recording = rec)
+        s.files[ProbeScripts.apkScanPath().absolute] = apk
+        val scan = prober.deepScan(s, setOf(launcher))
+        val finding = scan.evidence.getValue(launcher).apkScan
+        assertNotNull(finding)
+        assertTrue(finding.components.any { it.component.cls.endsWith("LibraryPageActivity") }, finding.components.toString())
+        assertTrue(finding.hasStrongAdEvidence)
+        assertTrue(s.execLines.any { it.startsWith("rm -f") && "apkscan.apk" in it }, s.execLines.toString())
+    }
+
+    // RFC-SHOP-5: a pull that fails (or a corrupt APK) yields no finding and never
+    // fails the scan — Setup still gets its deep-scan result.
+    @Test fun deepScanSkipsAnApkItCannotPull() = runBlocking<Unit> {
+        val launcher = p("com.google.android.tvlauncher")
+        val rec = Recording()
+            .on(ProbeScripts.DEEP_BOOT_RECEIVERS.text, "")
+            .on(ProbeScripts.DEEP_JOBS.text, "")
+            .on(ProbeScripts.deepPackageDump(launcher).text, "")
+            .on(ProbeScripts.copyApk(launcher, ProbeScripts.apkScanPath(), ApkScanSignatures.MAX_APK_BYTES).text, "")
+        val s = FakeTvSession(recording = rec)
+        val scan = prober.deepScan(s, setOf(launcher))
+        assertNull(scan.evidence[launcher]?.apkScan)
+    }
 }

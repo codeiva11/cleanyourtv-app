@@ -274,7 +274,11 @@ class DefaultPlanner(
                     val pkg = entry.name
                     if (!installed(pkg) || pkg in covered) continue
                     covered += pkg
-                    val why = protectedReason(pkg, profile, stockLaunchers, packageGroups) ?: feedReason(pkg)
+                    // RFC-SHOP-5: an app the person installed themselves is never switched
+                    // off — the REA engine never nominates one, and the planner refuses one
+                    // here too, so a profile row that somehow names one shows it as kept.
+                    val why = protectedReason(pkg, profile, stockLaunchers, packageGroups) ?: feedReason(pkg) ?:
+                        if (state(pkg)?.system == false) REASON_USER_INSTALLED else null
                     val wanted = wanted(pkg, group.default)
                     // Already asleep: nothing to switch off and nothing to keep, so the row would
                     // only make S3 count what the plan never does (emulator run, round 3). The same
@@ -294,7 +298,10 @@ class DefaultPlanner(
             for (pkg in choices.extraOff.sortedBy { it.value }) {
                 if (pkg in covered || !installed(pkg) || pkg in choices.kept) continue
                 if (keptUpdater(pkg, packageGroups)) continue   // keepUpdatesOn: a choice an earlier full build kept
-                val why = protectedReason(pkg, profile, stockLaunchers, packageGroups) ?: feedReason(pkg)
+                // RFC-SHOP-5: a Custom choice naming an app the person installed themselves
+                // is refused, never switched off (see REASON_USER_INSTALLED above).
+                val why = protectedReason(pkg, profile, stockLaunchers, packageGroups) ?: feedReason(pkg) ?:
+                    if (state(pkg)?.system == false) REASON_USER_INSTALLED else null
                 if (why != null) { refuse("${name(pkg)} cannot be switched off: $why"); continue }
                 if (isOff(pkg)) continue
                 custom += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), req.ramByPackage), off = true, protected = false, whyProtected = null)
@@ -379,14 +386,21 @@ class DefaultPlanner(
                 if (!isPresent && !isCore) continue
 
                 if (isPresent) {
-                    stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
-                    if (uninstallBloat) {
-                        // pm clear force-stops the app first, then the uninstall removes it for
-                        // user 0 — so nothing of it keeps running in the background.
-                        step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
-                        uninstall(pkg, GROUP_STOCK_CLEAN)
-                    } else {
-                        disable(pkg, GROUP_STOCK_CLEAN)
+                    // RFC-SHOP-5: an app the person installed themselves is never uninstalled
+                    // or disabled by this app — not even a Shop/ad package (videos, Play Games
+                    // and YouTube Music TV are all on the Play Store and can be user-installed).
+                    // It stays, shown as kept with the reason.
+                    val userInstalled = state(pkg)?.system == false
+                    stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = !userInstalled, protected = userInstalled, whyProtected = if (userInstalled) REASON_USER_INSTALLED else null)
+                    if (!userInstalled) {
+                        if (uninstallBloat) {
+                            // pm clear force-stops the app first, then the uninstall removes it for
+                            // user 0 — so nothing of it keeps running in the background.
+                            step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
+                            uninstall(pkg, GROUP_STOCK_CLEAN)
+                        } else {
+                            disable(pkg, GROUP_STOCK_CLEAN)
+                        }
                     }
                 } else if (isCore && uninstallBloat) {
                     // Core package not reported currently installed: ensure it is cleared and uninstalled so it cannot revive on reboot.
@@ -536,8 +550,11 @@ class DefaultPlanner(
             val patchWallGoesOff = PATCHWALL in pkgs && protectedReason(PATCHWALL, managedProfile, managedStockLaunchers) == null
             for (pkg in pkgs.sortedBy { it.value }) {
                 if (!installed(pkg)) { refuse("${pkg.value} is not on this TV"); continue }
+                // RFC-SHOP-5: a package the person installed themselves is never switched
+                // off — even when picked explicitly here (the TV's own settings own that).
                 val why = protectedReason(pkg, managedProfile, managedStockLaunchers)   // R1 R-3: never_disable and the wizard quirk
                     ?: REASON_PATCHWALL_FEED.takeIf { patchWallFeedKept(pkg, patchWallGoesOff) }
+                    ?: if (state(pkg)?.system == false) REASON_USER_INSTALLED else null
                 if (why != null) { refuse("${name(pkg)} cannot be switched off: $why"); continue }
                 rows += RowSummary(pkg, name(pkg), description(pkg), off = true, protected = false, whyProtected = null)
                 if (!isOff(pkg)) disable(pkg, GROUP_SWITCH_OFF)
@@ -554,7 +571,10 @@ class DefaultPlanner(
                 if (patchWallFeedKept(pkg, patchWallGoesOff)) continue
                 // After a TV update the stock launcher may be enabled and HOME again (R1): a leftover
                 // that is now a home screen is never switched off outside the home screen switch.
+                // RFC-SHOP-5: a package the person installed themselves is never switched off —
+                // the plan never switched one off, so a leftover naming one is stale or wrong.
                 val why = protectedReason(pkg, managedProfile, managedStockLaunchers)   // R1 R-3: never_disable and the wizard quirk
+                    ?: if (state(pkg)?.system == false) REASON_USER_INSTALLED else null
                 if (why != null) { refuse("${name(pkg)} cannot be switched off: $why"); continue }
                 disable(pkg, GROUP_LEFTOVERS)
             }
@@ -806,6 +826,13 @@ class DefaultPlanner(
         const val REASON_WIZARD_SECTION_ONLY = "the first-run setup wizard is only switched off as part of the home screen switch"
         // Undo of an earlier build's home screen: the uninstall erases everything it kept.
         const val NARRATION_REMOVE_LAUNCHER = "Removing the new home screen from the TV"
+        // RFC-SHOP-5 (2026-11-12): an app the person installed themselves is never uninstalled
+        // or disabled by this app — not even a Shop/ad package (videos, Play Games and YouTube
+        // Music TV are all on the Play Store and can be user-installed). The REA engine never
+        // nominates a user-installed app (findDebloatCandidates skips !state.system first),
+        // and the planner refuses one here too, so a profile or a Custom choice that somehow
+        // names one shows it as kept with this reason instead of switching it off.
+        const val REASON_USER_INSTALLED = "it was installed by you, and we never switch off apps you installed yourself"
         // STORES-PLAN 1 (keepUpdatesOn): the Google Play build keeps the TV's updaters on.
         const val REASON_UPDATES = "it brings the TV's software and security updates, which this version of the app always keeps on"
         // beta4 (PatchWallFeeds): PatchWall (Xiaomi's home screen app) and the feeds it shows.

@@ -2,6 +2,7 @@ package tv.cleanyour.core.planner
 
 import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.GroupDefault
 import tv.cleanyour.core.model.HomeClaimant
@@ -73,8 +74,8 @@ object PlannerFixtures {
         cleanStockHome: Boolean = false, autoDebloat: Boolean = false, uninstallBloat: Boolean = false,
     ) = Choices(kept, extraOff, keepDebuggingOn = false, cleanStockHome = cleanStockHome, autoDebloat = autoDebloat, uninstallBloat = uninstallBloat)
 
-    fun setup(profile: Profile? = profile(), choices: Choices = choices()) =
-        PlanRequest.Setup(profile?.let { ProfileResolution.Exact(it) } ?: ProfileResolution.None(listOf(stock)), choices)
+    fun setup(profile: Profile? = profile(), choices: Choices = choices(), deepScan: DeepScanResult? = null) =
+        PlanRequest.Setup(profile?.let { ProfileResolution.Exact(it) } ?: ProfileResolution.None(listOf(stock)), choices, deepScan = deepScan)
 
     fun planner(idGen: FakeIdGen = FakeIdGen(), profiles: tv.cleanyour.core.spec.ProfileSource? = null) =
         if (profiles == null) DefaultPlanner(clock, idGen, ShellRenderer(), "0.1.0")   // the R0: 15 constructor

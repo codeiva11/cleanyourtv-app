@@ -360,6 +360,29 @@ object ReaEngine {
                 )
                 continue
             }
+
+            // 4b. APK scan (RFC-SHOP-5): the TV's own APK, read on the phone, shows
+            // ad/telemetry/bloat machinery the name never hints at — an ad-network
+            // string, an ad-signal provider, or a manifest component the REA
+            // signatures mark. The loop's guards above already apply: system apps
+            // only, denylist, the resolved home, the keyboard and the screensaver
+            // are never nominated, and a launcher never appears here (its components
+            // are section 3.5's, never an uninstall). A corroborating string alone
+            // ("shop", "sponsored" as bare words) never nominates — only a strong
+            // match does. APK size alone never nominates either: a big APK is a weak
+            // signal only, and the measured RSS (rule 4) stays the authority — size
+            // is not even read here.
+            val apkScan = deepScan?.evidence?.get(pkg)?.apkScan
+            if (apkScan != null && apkScan.hasStrongAdEvidence) {
+                candidates += Candidate(
+                    pkg = pkg,
+                    friendlyName = formatName(pkg.value),
+                    description = "APK scan: ${apkScan.evidenceSummary()}",
+                    category = apkScan.strongestCategory ?: "bloat",
+                    estimatedRamMb = ramMb(pkg, ramByPackage)
+                )
+                continue
+            }
         }
 
         // 5. Deep scan (RFC-DEEP-1): what the names cannot see. A suspect the scan caught with a
@@ -504,12 +527,15 @@ object ReaEngine {
 
     /**
      * RFC-SHOP-2: the launcher components to switch off so the Shop tab and sponsored banners
-     * cannot come back after a reboot. Two sources, both evidence-only:
+     * cannot come back after a reboot. Three sources, all evidence-only:
      *  - the manifest-proven tvlauncher components, when tvlauncher is installed — the four
      *    ad components plus the two Shop content activities (TVLAUNCHER_SHOP_COMPONENTS);
      *  - the deep scan's components of a launcher package whose class matches an ad or Shop
      *    signature (boot receivers, services, activities, providers the dump lists), when
-     *    the scan actually saw them.
+     *    the scan actually saw them;
+     *  - RFC-SHOP-5: the APK scan's components of a launcher package, read from the TV's
+     *    own APK on the phone (manifest components the REA signatures mark), when the
+     *    scan actually saw them.
      * Never: the resolved home component itself; any class with "mainactivity" or
      * "homeactivity" in it (the home screen's own entry points); a component the dump already
      * shows disabled (Undo must never switch on something that was off before the plan);
@@ -543,6 +569,23 @@ object ReaEngine {
                     if (!allowed(c)) continue
                     if (AD_COMPONENT_SIGNATURES.none { cls.lowercase().contains(it) }) continue
                     out += c
+                }
+                // RFC-SHOP-5: the APK scan's components of this launcher, read from the
+                // TV's own APK on the phone (manifest components the REA signatures
+                // mark — Shop activities, ad components, ad-signal providers, Shop
+                // deep links). They join the dump's components — the hardcoded
+                // TVLAUNCHER_SHOP_COMPONENTS above stay as the fallback, so a launcher
+                // whose APK the scan could not pull still loses its Shop pages.
+                // The scanner already refused the home entry point; allowed() re-checks
+                // it, the denylist and the already-off list here.
+                val apk = ev.apkScan
+                if (apk != null) {
+                    for (found in apk.components) {
+                        val c = found.component
+                        if (c in disabled) continue
+                        if (!allowed(c)) continue
+                        out += c
+                    }
                 }
             }
         }

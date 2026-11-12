@@ -29,6 +29,63 @@ bloat prefix), system apps only, denylisted and stock-launcher packages excluded
 Every section is best-effort: a section that fails simply yields no evidence for it, and
 the scan never throws into the Setup flow.
 
+## The APK scan (RFC-SHOP-5, 2026-11-12)
+
+After the dumps, the same deep scan pulls at most four APKs from the TV and scans them
+on the phone (`AdbProber.deepScan` → `ApkScanner.scan`) — the resolved home launcher
+first, then the suspects in name order. Each APK is copied under the fixed TMP name
+`apkscan.apk` (`ProbeScripts.copyApk`, 40 MiB cap — launcherx is 35 MB), pulled over the
+ADB sync service, scanned, and removed whatever happened (`signerCleanup`). A copy, pull
+or parse that fails is evidence-absent: the package simply gets no finding, and Setup
+never fails for it.
+
+The scan is deliberately lite — no decompilation, no desktop, no network beyond this ADB
+session, no profile downloads. It reads three things from the APK, all pure Kotlin:
+
+- **Binary AndroidManifest.xml** — a small hand-rolled string-pool + chunk walk (the
+  same offsets apktool uses, validated against its output on tvlauncher, launcherx,
+  tvrecommendations and the Fire OS launcher): components (activities, services,
+  receivers, providers) with their class names, provider authorities, and intent-filter
+  deep links (scheme + host + path).
+- **resources.arsc** — the global string pool only; a package's ad strings appear there
+  when compiled normally.
+- **dex string and type tables** — string literals and class descriptors; code is never
+  executed or disassembled.
+
+The signatures (`ApkScanSignatures`) are data derived by REA analysis of the public
+APKs in the sandbox — tvlauncher 6.4.6, launcherx 1.0.616930155, tvrecommendations 4.1.8
+and the Fire OS launcher 7251003.1 — and only what REA actually found is listed. A
+component matches when its class is a REA-proven Shop/ad component or provider, when its
+provider authority serves ad signals, when it opens the Shop deep link
+(`tv.google.com`), or when its class name matches a signature substring at a word
+boundary (so "ads" does not fire on "Downloads" and "shop" does not fire on
+"Workshop"). A dex or resources string naming an ad network
+(`pagead2.googlesyndication.com`, `doubleclick.net`, `googlesyndication.com`) is strong
+evidence the APK serves ads; a bare "shop" or "sponsored" word is corroborating only
+and never nominates alone. Native `.so` names are recorded as a footprint note, never
+evidence.
+
+What the findings feed, with the same safety as the rest of the plan:
+
+- **Section 3.5** — a launcher's scanned Shop/ad components join the hardcoded
+  `TVLAUNCHER_SHOP_COMPONENTS` (which stays as the fallback) and are switched off with
+  `Op.DisableComponent`. The home entry point is refused twice (the scanner, then
+  `ReaEngine.allowed()`), and a component already off stays off.
+- **Section 2 / REA groups** — a system package whose APK shows strong ad/telemetry/
+  bloat evidence nominates even when its name matches nothing. The loop's guards apply
+  first: system apps only, denylist, the resolved home, the keyboard and the
+  screensaver are never nominated, and a launcher never appears here. APK size alone
+  never nominates — a big APK is a weak signal only; the measured RSS (rule 4) stays
+  the authority.
+
+What it cannot see: obfuscated logic (a MainActivity tab gate, a Phenotype server
+flag), native-code tabs, and any APK it did not pull (at most four pulls per scan, and
+only the base APK — split APKs' config splits are not pulled). Full decompilation
+stays desktop-REA work. And an app the person installed themselves is never nominated
+or switched off by any of this — the engine skips non-system apps first, and the
+planner refuses one with `REASON_USER_INSTALLED` wherever a profile, a Custom choice,
+a SwitchOff request, or Clean Stock Home section 2 names it.
+
 ## What the scan can reveal on the Skyworth SWTV
 
 The banners Sunil reported — Diwali Celebration, Top Selling Movies, Trending on Google,
@@ -77,9 +134,10 @@ row.
 
 ## Files
 
-- `core/model/.../DeepScan.kt` — `DeepScanEvidence`, `DeepScanResult`.
-- `core/probe/.../ProbeScripts.kt` — `DEEP_BOOT_RECEIVERS`, `DEEP_JOBS`, `deepPackageDump(pkg)`.
+- `core/model/.../DeepScan.kt` — `DeepScanEvidence`, `DeepScanResult`, `ApkScanFinding`.
+- `core/probe/.../ProbeScripts.kt` — `DEEP_BOOT_RECEIVERS`, `DEEP_JOBS`, `deepPackageDump(pkg)`, `apkScanPath()`.
 - `core/probe/.../Parsers.kt` — `DeepScanParser` (boot receivers, jobs, package dump).
+- `core/probe/.../ApkScanner.kt`, `ApkScanSignatures.kt` — the on-phone APK scan and its REA-derived signatures.
 - `core/probe/.../Probe.kt`, `AdbProber.kt` — `Prober.deepScan`.
 - `core/planner/.../ReaEngine.kt` — `deepScanSuspects`, `findDeepScanCandidates`, the merge in
   `findDebloatCandidates`, the deep-scan group in `synthesizeReaGroups`.

@@ -306,7 +306,48 @@ class AdbProber(
             } catch (_: Exception) {
             }
         }
+        // RFC-SHOP-5: the APK scan — pull the launcher and ad suspects' own APKs and
+        // scan them on the phone (ApkScanner: manifest, resources, dex — no
+        // decompilation, no desktop, no network beyond this ADB session). Best-effort
+        // like the rest of the scan: a copy, pull or parse that fails yields no
+        // finding for that package and never fails Setup. At most MAX_APK_SCANS pulls,
+        // launchers first, APKs over the cap skipped (evidence-absent, not an error).
+        for (pkg in apkScanTargets(suspects)) {
+            val path = ProbeScripts.apkScanPath()
+            try {
+                val copy = run(
+                    session,
+                    ProbeScripts.copyApk(pkg, path, ApkScanSignatures.MAX_APK_BYTES),
+                    ProbeStage.LAUNCHER,
+                    16 * 1024,
+                    timeoutMs = 60_000,
+                    retry = RetryClass.IDEMPOTENT_WRITE,
+                )
+                if (copy.exit == 0) {
+                    val bytes = pullOrNull(session, path, ApkScanSignatures.MAX_APK_BYTES)
+                    val finding = bytes?.let { ApkScanner.scan(it, pkg, clock.nowMs()) }
+                    if (finding != null) merge(pkg) { it.copy(apkScan = finding) }
+                }
+            } catch (_: Exception) {
+            } finally {
+                withContext(NonCancellable) { bestEffort(session, ProbeScripts.signerCleanup(path)) }
+            }
+        }
         return DeepScanResult(clock.nowMs(), found)
+    }
+
+    // RFC-SHOP-5: which suspects get their APK pulled — launchers first (the Shop tab
+    // lives in one, whatever its brand), then the rest in name order, at most
+    // MAX_APK_SCANS. A package the dumps already showed is never special-cased here:
+    // the scan is bounded by count, not by what the dumps saw.
+    private fun apkScanTargets(suspects: Set<PackageName>): List<PackageName> {
+        fun launcherLike(pkg: PackageName): Boolean {
+            val v = pkg.value.lowercase()
+            return ApkScanSignatures.APK_SCAN_TARGET_SUBSTRINGS.any { v.contains(it) }
+        }
+        return suspects
+            .sortedWith(compareByDescending<PackageName> { launcherLike(it) }.thenBy { it.value })
+            .take(ApkScanSignatures.MAX_APK_SCANS)
     }
 
     override suspend fun freeDataMb(session: TvSession): Int {

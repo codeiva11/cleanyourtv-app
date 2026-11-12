@@ -1,5 +1,10 @@
 package tv.cleanyour.core.planner
 
+import tv.cleanyour.core.model.ApkScanComponent
+import tv.cleanyour.core.model.ApkScanFinding
+import tv.cleanyour.core.model.ApkScanIds
+import tv.cleanyour.core.model.ApkScanMatch
+import tv.cleanyour.core.model.ApkScanMatchKind
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.DeepScanEvidence
 import tv.cleanyour.core.model.DeepScanResult
@@ -408,5 +413,161 @@ class ReaEngineTest {
         assertEquals(2, groups.size)
         assertEquals("rea_ram", groups[0].id)
         assertEquals("rea_bloat", groups[1].id)
+    }
+
+    // --- RFC-SHOP-5: the on-phone APK scan -------------------------------------
+
+    private fun adNetworkMatch() = ApkScanMatch(
+        ApkScanIds.AD_NETWORK_STRING,
+        ApkScanMatchKind.STRING,
+        "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "dex string \"https://pagead2.googlesyndication.com/pagead/gen_204\" names an ad network (pagead2.googlesyndication.com)",
+        "ads",
+    )
+
+    private fun corroboratingMatch() = ApkScanMatch(
+        ApkScanIds.CORROBORATING_STRING,
+        ApkScanMatchKind.STRING,
+        "Shop",
+        "resources string \"Shop\" mentions ads (corroborating only)",
+        "ads",
+    )
+
+    private fun apkFinding(pkg: PackageName, vararg matches: ApkScanMatch) = ApkScanFinding(
+        pkg = pkg,
+        apkSizeBytes = 20_000_000,
+        versionCode = 5,
+        matches = matches.toList(),
+        matchedStrings = matches.filter { it.kind == ApkScanMatchKind.STRING }.map { it.value },
+    )
+
+    // A system package whose NAME matches nothing still nominates when its own APK
+    // shows ad machinery — that is the APK scan's job.
+    @Test
+    fun apkScanNominatesUnknownAdPackage() {
+        val innocent = PackageName("com.vendor.innocent")
+        val packages = mapOf(innocent to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+        val scan = DeepScanResult(1, mapOf(innocent to DeepScanEvidence(apkScan = apkFinding(innocent, adNetworkMatch()))))
+
+        val candidates = ReaEngine.findDebloatCandidates(snap, fakeFacts, stockLaunchers, deepScan = scan)
+
+        assertEquals(1, candidates.size)
+        assertEquals("ads", candidates[0].category)
+        assertTrue("pagead2" in candidates[0].description, candidates[0].description)
+    }
+
+    @Test
+    fun apkScanTelemetryNominatesTelemetry() {
+        val innocent = PackageName("com.vendor.innocent")
+        val packages = mapOf(innocent to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+        val telemetry = ApkScanMatch(
+            ApkScanIds.TELEMETRY_COMPONENT,
+            ApkScanMatchKind.COMPONENT,
+            "com.vendor.innocent.analytics.Tracker",
+            "manifest component com.vendor.innocent.analytics.Tracker matches signature \"analytics\"",
+            "telemetry",
+        )
+        val scan = DeepScanResult(1, mapOf(innocent to DeepScanEvidence(apkScan = apkFinding(innocent, telemetry))))
+
+        val candidates = ReaEngine.findDebloatCandidates(snap, fakeFacts, stockLaunchers, deepScan = scan)
+
+        assertEquals(1, candidates.size)
+        assertEquals("telemetry", candidates[0].category)
+    }
+
+    // Corroborating strings alone ("Shop" as a bare word) never nominate — only a
+    // strong match does.
+    @Test
+    fun apkScanWithoutStrongEvidenceNominatesNothing() {
+        val innocent = PackageName("com.vendor.innocent")
+        val packages = mapOf(innocent to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+        val scan = DeepScanResult(1, mapOf(innocent to DeepScanEvidence(apkScan = apkFinding(innocent, corroboratingMatch()))))
+
+        val candidates = ReaEngine.findDebloatCandidates(snap, fakeFacts, stockLaunchers, deepScan = scan)
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    // RFC-SHOP-5 regression: an app the person installed themselves is NEVER a
+    // candidate — not by name, not by heavy RAM, not by APK evidence. The system
+    // flag is the guard, and it stands first in the loop.
+    @Test
+    fun userInstalledAppsAreNeverCandidatesEvenWithApkEvidenceAndHeavyRam() {
+        val mine = PackageName("com.vendor.ads")
+        val packages = mapOf(mine to state(system = false))
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+        val scan = DeepScanResult(1, mapOf(mine to DeepScanEvidence(apkScan = apkFinding(mine, adNetworkMatch()))))
+
+        val candidates = ReaEngine.findDebloatCandidates(
+            snap, fakeFacts, stockLaunchers,
+            ramByPackage = mapOf(mine to 100 * 1024),
+            deepScan = scan,
+        )
+
+        assertTrue(candidates.isEmpty(), candidates.toString())
+    }
+
+    // A heavy-RAM stock app's row keeps its RAM number — more free RAM is the point,
+    // and the number is what the person sees.
+    @Test
+    fun heavyRamCandidateDescriptionShowsRamNumber() {
+        val heavy = PackageName("com.vendor.heavyservice")
+        val packages = mapOf(heavy to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+
+        val candidates = ReaEngine.findDebloatCandidates(
+            snap, fakeFacts, stockLaunchers, ramByPackage = mapOf(heavy to 80 * 1024)
+        )
+
+        assertEquals(1, candidates.size)
+        assertTrue("about 80 MB" in candidates[0].description, candidates[0].description)
+    }
+
+    // The APK scan's Shop component of a vendor launcher joins the section 3.5 list;
+    // its home entry point never does, and a component already off stays off.
+    @Test
+    fun apkScanComponentsJoinLauncherAdComponents() {
+        val vendor = PackageName("com.vendor.launcher")
+        val packages = mapOf(
+            vendor to state(),
+            PackageName("com.google.android.tvlauncher") to state(),
+        )
+        val home = Component(vendor, ".MainActivity")
+        val snap = Samples.snapshot(
+            packages = packages,
+            home = HomeResolution(home, listOf(HomeClaimant(home, 2))),
+        )
+        val shop = Component(vendor, "com.vendor.launcher.shop.ShopActivity")
+        val main = Component(vendor, "com.vendor.launcher.MainActivity")
+        val finding = ApkScanFinding(
+            pkg = vendor,
+            apkSizeBytes = 12_000_000,
+            components = listOf(
+                ApkScanComponent(
+                    shop, "ads",
+                    listOf(ApkScanMatch(ApkScanIds.SHOP_ACTIVITY, ApkScanMatchKind.COMPONENT, shop.cls, "manifest component ${shop.cls} is a REA-proven Shop activity", "ads")),
+                ),
+                ApkScanComponent(
+                    main, "ads",
+                    listOf(ApkScanMatch(ApkScanIds.SHOP_ACTIVITY, ApkScanMatchKind.COMPONENT, main.cls, "manifest component ${main.cls} matches signature \"shop\"", "ads")),
+                ),
+            ),
+        )
+        val scan = DeepScanResult(1, mapOf(vendor to DeepScanEvidence(apkScan = finding)))
+
+        val found = ReaEngine.findLauncherAdComponents(scan, snap)
+        assertTrue(shop in found, found.toString())
+        assertFalse(main in found, found.toString())
+
+        val disabledScan = DeepScanResult(1, mapOf(vendor to DeepScanEvidence(apkScan = finding, disabledComponents = listOf(shop))))
+        assertFalse(shop in ReaEngine.findLauncherAdComponents(disabledScan, snap))
     }
 }
