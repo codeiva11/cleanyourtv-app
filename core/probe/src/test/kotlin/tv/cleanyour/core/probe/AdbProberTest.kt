@@ -55,15 +55,46 @@ class AdbProberTest {
         assertFalse(snap.packages.getValue(p("in.startv.hotstar")).system, "/data/app")
     }
 
+    // RFC-SHOP-6 (2026-11-12): the videos bug — an updated system app in /data/app/ whose
+    // `pkgFlags` line came back empty was read as user-installed, so the guard kept it and
+    // section 2 never uninstalled it. `pm list packages -s` is the package manager's own
+    // system list and keeps FLAG_SYSTEM through updates, so membership there is system=true
+    // whatever the flags or the path say. A genuinely user-installed app is never in that
+    // list and stays system=false.
+    @Test fun systemPackagesListMakesAnUpdatedSystemAppSystemWhenItsFlagsAreEmpty() = runBlocking<Unit> {
+        val dump = ProbeFixtures.grepped(ProbeFixtures.res("mitv/dumpsys-package-packages.txt"))
+        val lines = dump.lines().toMutableList()
+        val at = lines.indexOfFirst { it.trim().startsWith("Package [com.google.android.videos]") }
+        assertTrue(at >= 0, "videos must be in the capture")
+        assertTrue(lines[at + 1].trim().startsWith("codePath=/data/app/"), "videos must live in /data/app/")
+        val flags = (at + 1 until lines.size).first { lines[it].trim().startsWith("pkgFlags=") }
+        lines[flags] = "    pkgFlags=[ ]"
+        val s = FakeTvSession(recording = ProbeFixtures.miTvRecording().on(ProbeScripts.PACKAGE_FLAGS.text, lines.joinToString("\n")))
+        val snap = prober.snapshot(s, SnapshotReason.MANUAL) {}
+        assertTrue(snap.packages.getValue(p("com.google.android.videos")).system, "in -s, empty flags, /data/app")
+        assertTrue(snap.packages.getValue(p("com.google.android.gms")).system, "updated system app keeps SYSTEM")
+        assertFalse(snap.packages.getValue(p("in.startv.hotstar")).system, "user-installed, never in -s")
+    }
+
+    // RFC-SHOP-6: when the -s call itself fails, the snapshot falls back to the flags/path
+    // behaviour it had before — Setup never fails over this one list.
+    @Test fun aFailedSystemPackagesListFallsBackToFlagsAndPath() = runBlocking<Unit> {
+        val s = FakeTvSession(recording = ProbeFixtures.miTvRecording().on(ProbeScripts.SYSTEM_PACKAGES.text, "", exit = 1))
+        val snap = prober.snapshot(s, SnapshotReason.MANUAL) {}
+        assertTrue(snap.packages.getValue(p("com.google.android.gms")).system, "flags still say SYSTEM")
+        assertFalse(snap.packages.getValue(p("in.startv.hotstar")).system, "path still says /data/app")
+        assertTrue(ProbeScripts.SYSTEM_PACKAGES.text in s.execLines, "the -s call was attempted")
+    }
+
     @Test fun fullSnapshotOfTheReferenceTv() = runBlocking<Unit> {
         val s = ProbeFixtures.miTvSession()
         val stages = mutableListOf<ProbeStage>()
         val snap = prober.snapshot(s, SnapshotReason.BASELINE) { stages += it }
         assertEquals(ProbeStage.entries.toList(), stages.toList())
 
-        // F3: at most 10 shell calls (7), one pull, and nothing written.
-        assertEquals(7, s.execLines.size, s.execLines.joinToString("\n"))
-        val reads = setOf(ProbeScripts.FACTS, ProbeScripts.PACKAGES, ProbeScripts.DISABLED, ProbeScripts.PACKAGE_FLAGS, ProbeScripts.HOME, ProbeScripts.INPUTS, ProbeScripts.SETTINGS).map { it.text }
+        // F3: at most 10 shell calls (8), one pull, and nothing written.
+        assertEquals(8, s.execLines.size, s.execLines.joinToString("\n"))
+        val reads = setOf(ProbeScripts.FACTS, ProbeScripts.PACKAGES, ProbeScripts.DISABLED, ProbeScripts.PACKAGE_FLAGS, ProbeScripts.SYSTEM_PACKAGES, ProbeScripts.HOME, ProbeScripts.INPUTS, ProbeScripts.SETTINGS).map { it.text }
         assertEquals(reads.toSet(), s.execLines.toSet())
         assertTrue(s.calls.none { it is FakeTvSession.Call.Push || it is FakeTvSession.Call.InstallStream || it is FakeTvSession.Call.Reboot })
         assertEquals(1, s.calls.count { it is FakeTvSession.Call.Pull })
@@ -82,6 +113,7 @@ class AdbProberTest {
         assertEquals(setOf(p("com.droidlogic.tvinput")), snap.packages.filterValues { it.tvInput }.keys)
         assertTrue(snap.packages.getValue(p("com.android.systemui")).persistent)
         assertTrue(snap.packages.getValue(p("com.google.android.gms")).system, "updated system app keeps SYSTEM")
+        assertTrue(snap.packages.getValue(p("com.google.android.videos")).system, "updated system app in `pm list packages -s`")
         assertFalse(snap.packages.getValue(p("in.startv.hotstar")).system)
         assertTrue(snap.packages.values.all { it.versionCode > 0 && it.signer == null && !it.installedByUs })
 

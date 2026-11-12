@@ -2,6 +2,7 @@ FACTS	getprop; echo '@@cyt@@ meminfo'; cat /proc/meminfo; echo '@@cyt@@ gms'; pm
 PACKAGES	pm list packages -f
 DISABLED	pm list packages -d
 PACKAGE_FLAGS	dumpsys package packages | grep -E '^(Packages:|Hidden system packages:)|^ +(Package \[|codePath=|versionCode=|pkgFlags=|User 0: )'
+SYSTEM_PACKAGES	pm list packages -s
 HOME	cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME; echo '@@cyt@@ resolved'; cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
 HOME_RESOLVED	cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
 LAUNCHABLE	cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER; echo '@@cyt@@ launcher'; cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER

@@ -32,7 +32,7 @@ import tv.cleanyour.core.session.TvSession
 import tv.cleanyour.core.store.Clock
 import tv.cleanyour.core.store.SnapshotCodec
 
-// The Prober over a TvSession: reads only, batched per stage (D40), seven shell calls and one
+// The Prober over a TvSession: reads only, batched per stage (D40), eight shell calls and one
 // pull for a full snapshot, plus one call for the launchable apps (LaunchableApps). Every method fails with AdbException like the session it wraps; a
 // parser failure is ProbeException. installRefusal is the one exception to "reads only": it
 // installs and uninstalls the bundled no-op APK, which is the only way to learn the answer.
@@ -110,6 +110,17 @@ class AdbProber(
         val listed = run(session, ProbeScripts.PACKAGES, ProbeStage.PACKAGES, 4 * 1024 * 1024).also { check(it, ProbeStage.PACKAGES) }
         val disabled = run(session, ProbeScripts.DISABLED, ProbeStage.PACKAGES, 4 * 1024 * 1024).also { check(it, ProbeStage.PACKAGES) }
         val flags = run(session, ProbeScripts.PACKAGE_FLAGS, ProbeStage.PACKAGES, 4 * 1024 * 1024)
+        // RFC-SHOP-6 (2026-11-12): `pm list packages -s` is the package manager's own
+        // system list — an updated system app keeps FLAG_SYSTEM, so membership here is
+        // system=true whatever the dumpsys flags or the install path say. It can only
+        // ADD system=true, never remove it, and a failure here never fails Setup: the
+        // snapshot falls back to the flags/path behaviour it had before.
+        val systemPkgs = try {
+            val r = run(session, ProbeScripts.SYSTEM_PACKAGES, ProbeStage.PACKAGES, 4 * 1024 * 1024)
+            PackagesParser.parse(lines(r.stdout)).map { it.name }.toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
         val all = PackagesParser.parse(lines(listed.stdout))
         val off = PackagesParser.parse(lines(disabled.stdout)).map { it.name }.toSet()
         val info = DumpsysPackageParser.parse(lines(flags.stdout))
@@ -149,7 +160,9 @@ class AdbProber(
             packages[name] = PackageState(
                 enabled = enabledState(p.name in off, i?.enabled),
                 // Review of beta3: a flags line that came back empty says nothing, so the install path decides.
-                system = i?.flags?.takeIf { it.isNotEmpty() }?.contains("SYSTEM") ?: SYSTEM_PATHS.any { path?.startsWith(it) == true },
+                // RFC-SHOP-6: the -s list decides first — an updated system app keeps FLAG_SYSTEM.
+                system = p.name in systemPkgs ||
+                    (i?.flags?.takeIf { it.isNotEmpty() }?.contains("SYSTEM") ?: SYSTEM_PATHS.any { path?.startsWith(it) == true }),
                 versionCode = i?.versionCode ?: 0,
                 signer = signers[name],
                 persistent = i?.flags?.contains("PERSISTENT") == true,

@@ -33,12 +33,17 @@ object ProbeScripts {
     // Stage FACTS: every property, memory, and whether Play Services exists.
     val FACTS = ShellLine("getprop; ${mark("meminfo")}; cat /proc/meminfo; ${mark("gms")}; pm path com.google.android.gms")
 
-    // Stage PACKAGES: three calls, the package manager's own lists plus the flags and state of each.
+    // Stage PACKAGES: four calls, the package manager's own lists plus the flags and state of each.
     val PACKAGES = ShellLine("pm list packages -f")
     val DISABLED = ShellLine("pm list packages -d")
     val PACKAGE_FLAGS = ShellLine(
         "dumpsys package packages | grep -E '^(Packages:|Hidden system packages:)|^ +(Package \\[|codePath=|versionCode=|pkgFlags=|User 0: )'",
     )
+    // RFC-SHOP-6 (2026-11-12): the package manager's own system list. An updated
+    // system app keeps FLAG_SYSTEM, so this list is the one signal the dumpsys flags
+    // and the install path cannot take away — when `pkgFlags` comes back empty for a
+    // package in /data/app/, this list is what says it is still a system app.
+    val SYSTEM_PACKAGES = ShellLine("pm list packages -s")
 
     // Stage HOME: every HOME claimant with its priority, then what HOME resolves to now.
     val HOME = ShellLine("cmd package query-activities --brief $HOME_ARGS; ${mark("resolved")}; cmd package resolve-activity --brief $HOME_ARGS")
@@ -125,7 +130,7 @@ object ProbeScripts {
 
     // Every constant line, for the golden test and for anyone auditing what a probe can send.
     val all: Map<String, ShellLine> = linkedMapOf(
-        "FACTS" to FACTS, "PACKAGES" to PACKAGES, "DISABLED" to DISABLED, "PACKAGE_FLAGS" to PACKAGE_FLAGS, "HOME" to HOME,
+        "FACTS" to FACTS, "PACKAGES" to PACKAGES, "DISABLED" to DISABLED, "PACKAGE_FLAGS" to PACKAGE_FLAGS, "SYSTEM_PACKAGES" to SYSTEM_PACKAGES, "HOME" to HOME,
         "HOME_RESOLVED" to HOME_RESOLVED, "LAUNCHABLE" to LAUNCHABLE, "INPUTS" to INPUTS, "SETTINGS" to SETTINGS, "HOME_FOCUS" to HOME_FOCUS, "BOOT_ID" to BOOT_ID,
         "FREE_DATA" to FREE_DATA, "SCREENSHOT" to SCREENSHOT, "SCREENSHOT_CLEANUP" to SCREENSHOT_CLEANUP, "MKDIR_TMP" to MKDIR_TMP,
         "NOOP_INSTALL" to NOOP_INSTALL, "NOOP_UNINSTALL" to NOOP_UNINSTALL, "NOOP_CLEANUP" to NOOP_CLEANUP, "PS_ARGS" to PS_ARGS,

@@ -25,6 +25,7 @@ object ProbeFixtures {
         return Recording.miTv(c)
             .on(ProbeScripts.FACTS.text, nl(c.getpropText) + mark("meminfo") + res("mitv/meminfo.txt") + mark("gms") + res("mitv/gms-path.txt"))
             .on(ProbeScripts.PACKAGE_FLAGS.text, grepped(res("mitv/dumpsys-package-packages.txt")))
+            .on(ProbeScripts.SYSTEM_PACKAGES.text, res("mitv/packages-system.txt"))
             .on(ProbeScripts.HOME.text, res("mitv/query-home.txt") + mark("resolved") + c.homeActivityText)
             .on(ProbeScripts.INPUTS.text, res("mitv/tv_input.txt") + mark("hdmi") + res("mitv/hdmi_control.txt"))
             .on(ProbeScripts.SETTINGS.text, nl(c.settingsSecureText) + mark("global") + c.settingsGlobalText)
