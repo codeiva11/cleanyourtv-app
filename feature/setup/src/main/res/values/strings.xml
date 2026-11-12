@@ -423,7 +423,7 @@
     <string name="confirm_stop_here_body">We keep what is already done and change nothing else. Your TV stays safe.</string>
     <string name="confirm_stop_here_button">Stop here</string>
     <string name="confirm_undo_title">Undo the changes on the TV?</string>
-    <string name="confirm_undo_body">We put back everything this change did, so the TV is as it was before. Nothing is deleted.</string>
+    <string name="confirm_undo_body">We put back everything this change did, so the TV is as it was before.</string>
     <string name="confirm_undo_button">Undo the changes</string>
     <!-- Test build: the card before the plan when this TV's list is a candidate (made from reports, not tested yet). -->
     <string name="candidate_overline">Test build</string>

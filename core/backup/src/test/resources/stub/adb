@@ -48,6 +48,9 @@ case "${1-} ${2-}" in
     exit 0 ;;
   "pm enable"|"pm disable-user"|"pm default-state"|"pm uninstall")
     verb="$2"; shift 2
+    # pm uninstall keeps the app's data with -k (pm uninstall -k --user 0 <pkg>); the flag
+    # comes before --user, so skip it before the user and the package are read.
+    if [ "${1-}" = -k ]; then shift; fi
     if user0 "$@"; then shift 2; fi
     p="${1-}"
     if [ ! -f "$T/pkg/$p" ]; then

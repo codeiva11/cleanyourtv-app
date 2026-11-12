@@ -962,7 +962,23 @@ class SetupMachineTest {
         toFound(h, m)
         val found = assertIs<SetupState.Found>(m.state.value)
         assertTrue(found.plan.steps.none { it.op is Op.Install || it.op is Op.InstallStream || it.op is Op.SetHome || it.op is Op.ArmHomeWatchdog })
-        assertEquals(listOf<Op>(Op.Disable(adPkg)), found.plan.steps.map { it.op })
+        // M4 (2026-11-12): autoDebloat and uninstallBloat are no longer gated on a stock Google
+        // launcher, so the REA rules fire on this Fire TV too. The profile's DISABLE row for the
+        // analytics app still wins its row (it is covered first), but the action follows the
+        // uninstall toggle: a system app is permanently uninstalled, not only disabled. The
+        // other seven are REA nominations (telemetry/ad signatures and the Shop/ad list) on the
+        // same snapshot, each cleared first and then uninstalled for user 0.
+        val uninstalls = listOf(
+            adPkg,
+            PackageName("com.google.android.leanbacklauncher.recommendations"),
+            PackageName("com.xiaomi.android.tvsetup.partnercustomizer"),
+            PackageName("android.autoinstalls.config.xioami.dangal"),
+            PackageName("com.google.android.tv.bugreportsender"),
+            PackageName("com.google.android.partnersetup"),
+            PackageName("com.google.android.tv.frameworkpackagestubs"),
+            PackageName("com.xiaomi.statistic"),
+        )
+        assertEquals(uninstalls.flatMap { listOf<Op>(Op.ClearPackage(it), Op.Uninstall(it)) }, found.plan.steps.map { it.op })
     }
 
     // A5: "Stop here" shows Done only once the engine's abandon really ended the run. While it is

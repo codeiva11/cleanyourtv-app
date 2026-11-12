@@ -193,7 +193,7 @@ class RestoreShellTest {
         assertTrue(tv.calls().isEmpty(), "a dry run must not call adb")
         val commands = b.entries.getValue(RestoreBundle.COMMANDS).decodeToString().lines().filter { it.isNotEmpty() && !it.startsWith("#") }
         assertEquals(commands, r.out.lines().filter { it.isNotEmpty() && !it.startsWith("#") })
-        assertTrue(r.out.contains("# kept (needs --remove-apps): 'pm' 'uninstall' '--user' '0' 'com.gathin.tvhome'"), r.out)
+        assertTrue(r.out.contains("# kept (needs --remove-apps): 'pm' 'uninstall' '-k' '--user' '0' 'com.gathin.tvhome'"), r.out)
     }
 
     @Test fun aFailedStepIsReportedAndTheRestStillRun() {
