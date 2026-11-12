@@ -46,6 +46,7 @@ import tv.cleanyour.testing.fixtures.FakeProfileSource
 import tv.cleanyour.testing.fixtures.Samples
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
