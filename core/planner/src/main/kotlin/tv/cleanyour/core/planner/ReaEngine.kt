@@ -2,6 +2,7 @@ package tv.cleanyour.core.planner
 
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.DeepScanResult
+import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.GroupDefault
 import tv.cleanyour.core.model.PackageEntry
 import tv.cleanyour.core.model.PackageGroup
@@ -53,6 +54,32 @@ object ReaEngine {
         PackageName("com.tianci.push"),
         PackageName("com.tianci.autoinstaller"),
         PackageName("com.coocaa.mall"),
+    )
+
+    // RFC-SHOP-2 (2026-11-12): the stock launcher's own ad components, proven from the
+    // decompiled tvlauncher v7.7.15 manifest (tv_launcher_ad_analysis.md, Method 2 Step 3/4).
+    // These four render or feed the Shop tab and the sponsored rows from inside the launcher,
+    // so uninstalling tvrecommendations/videos alone cannot stop them: on boot the launcher
+    // re-reads its own ad signals and re-draws the Shop tab. Switching them off with
+    // `pm disable-user` (Op.DisableComponent) persists across reboot in the per-user
+    // package-restrictions, and Undo switches them back on. Only tvlauncher's are hardcoded:
+    // launcherx's component class names are not proven anywhere in this repo, so launcherx is
+    // covered by the runtime discovery below, never by a guess.
+    val TVLAUNCHER_AD_COMPONENTS: List<Component> = listOf(
+        Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity"),
+        Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.home.AdsPersonalizationAwarenessDialogActivity"),
+        Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.targetedpromotions.RedeemTargetedPromotionActivity"),
+        Component(STOCK_TV_LAUNCHER, "com.google.android.tvlauncher.home.AdsPersonalizationAwarenessNotificationReceiver"),
+    )
+
+    // RFC-SHOP-2: substrings (lowercased) that mark a launcher component as ad machinery,
+    // applied ONLY to the components of a launcher package (the resolved home plus the stock
+    // Google launchers), never to the whole TV. "ima" is deliberately absent: it matches
+    // "Image..." as well as the ads SDK, and every IMA class also contains "ads".
+    private val AD_COMPONENT_SIGNATURES = listOf(
+        "ads", "adssignals", "sponsor", "banner", "promos", "promotion", "recommend",
+        "featuredcarousel", "infeed", "instream", "targetedpromotion", "adpersonalization",
+        "doubleclick", "advertis", "commercial", "freepay", "whythisad",
     )
 
     // Heuristic signatures for Ads & Recommendation daemons
@@ -429,6 +456,112 @@ object ReaEngine {
             )
         }
         return groups
+    }
+
+    /**
+     * RFC-SHOP-2: the launcher packages the deep scan must dump, so findLauncherAdComponents
+     * can read their components: the resolved home (whatever its package is — a Coocaa
+     * launcher on the Skyworth SWTV, a Google one elsewhere) plus any stock Google launcher
+     * installed. The scan cap is 40 and these names sort early, so they are effectively
+     * never cut.
+     */
+    fun launcherScanPackages(snapshot: Snapshot): Set<PackageName> {
+        val out = LinkedHashSet<PackageName>()
+        snapshot.home.resolved?.pkg?.let { if (it in snapshot.packages) out += it }
+        for (pkg in STOCK_GOOGLE_LAUNCHERS) if (pkg in snapshot.packages) out += pkg
+        return out
+    }
+
+    /**
+     * RFC-SHOP-2: the launcher components to switch off so the Shop tab and sponsored banners
+     * cannot come back after a reboot. Two sources, both evidence-only:
+     *  - the four manifest-proven tvlauncher components, when tvlauncher is installed;
+     *  - the deep scan's components of a launcher package whose class matches an ad signature
+     *    (boot receivers, services, activities, providers the dump lists), when the scan
+     *    actually saw them.
+     * Never: the resolved home component itself; any class with "mainactivity" or
+     * "homeactivity" in it (the home screen's own entry points); a component the dump already
+     * shows disabled (Undo must never switch on something that was off before the plan);
+     * a component of a denylisted package. Sorted by flat name, so the plan order is stable.
+     */
+    fun findLauncherAdComponents(scan: DeepScanResult?, snapshot: Snapshot): List<Component> {
+        val launchers = launcherScanPackages(snapshot)
+        val home = snapshot.home.resolved
+        val out = LinkedHashSet<Component>()
+        fun isHomeComponent(c: Component): Boolean = c == home ||
+            c.cls.lowercase().contains("mainactivity") || c.cls.lowercase().contains("homeactivity")
+        fun allowed(c: Component): Boolean {
+            if (isHomeComponent(c)) return false
+            if (Denylist.staticReason(c.pkg.value) != null) return false
+            return true
+        }
+        if (STOCK_TV_LAUNCHER in snapshot.packages) {
+            // A hardcoded component the dump already shows disabled was off before us: never
+            // plan it — Undo must never switch on something that was off before the plan.
+            val disabled = scan?.evidence?.get(STOCK_TV_LAUNCHER)?.disabledComponents?.toSet().orEmpty()
+            for (c in TVLAUNCHER_AD_COMPONENTS) if (c !in disabled && allowed(c)) out += c
+        }
+        if (scan != null) {
+            for (pkg in launchers) {
+                val ev = scan.evidence[pkg] ?: continue
+                val disabled = ev.disabledComponents.toSet()
+                val seen = ev.bootReceivers + ev.services + ev.activities + ev.providers
+                for (cls in seen) {
+                    val c = Component(pkg, cls)
+                    if (c in disabled) continue
+                    if (!allowed(c)) continue
+                    if (AD_COMPONENT_SIGNATURES.none { cls.lowercase().contains(it) }) continue
+                    out += c
+                }
+            }
+        }
+        return out.sortedBy { it.flat }
+    }
+
+    /**
+     * RFC-SHOP-2 (2026-11-12): Clean Stock Home is gated on the TV having a home screen the
+     * plan knows how to clean. Fire OS is out first: its launcher is Amazon's, none of the
+     * Shop/ad machinery applies, and the Fire OS tests pin the clean-up alone there. A home
+     * screen the person installed is out too: Clean Stock Home clears the launcher's data
+     * and restarts it, and a person's launcher is theirs to keep as it is. So is ours: our
+     * launcher draws no Shop tab, so there is nothing to clean while it is home. Otherwise
+     * a Google launcher installed qualifies (the old rule), or any OTHER resolved home — a
+     * vendor launcher like the Skyworth SWTV's Coocaa one, whose Shop tab is served by the
+     * vendor's own ad packages (section 2 uninstalls them) and its ad components (section
+     * 3.5 disables them). A TV whose HOME is undecided (a placeholder or nothing) and has no
+     * Google launcher has no home to clean.
+     */
+    fun isCleanStockHomeEligible(snapshot: Snapshot): Boolean {
+        if (FireOs.isFireOs(snapshot.facts, snapshot)) return false
+        val resolved = snapshot.home.resolved
+        if (resolved != null && !StockHome.isPlaceholder(resolved)) {
+            if (SwitchOffRule.isPersonsLauncher(resolved.pkg, snapshot)) return false
+            if (resolved.pkg == SwitchOffRule.OUR_LAUNCHER) return false
+        }
+        if (isStockGoogleTvLauncher(snapshot)) return true
+        if (resolved == null || StockHome.isPlaceholder(resolved)) return false
+        return true
+    }
+
+    /**
+     * RFC-SHOP-2: the launcher Clean Stock Home clears and restarts: the TV's own resolved
+     * home when it is a real, installed launcher (a vendor launcher on an unlisted TV as
+     * well as a Google one), else the Google stock component when that is installed and on,
+     * else null (no launcher to clear — the steps are skipped, not failed). The old code
+     * always returned a Google component, even on a TV with no Google launcher at all, so
+     * `pm clear` and the restart failed every run there. A person's launcher and ours are
+     * never returned here: their data is not this plan's to clear.
+     */
+    fun stockHomeToClean(snapshot: Snapshot, stockLaunchers: List<Component>): Component? {
+        val resolved = snapshot.home.resolved
+        if (resolved != null && !StockHome.isPlaceholder(resolved) && resolved.pkg in snapshot.packages &&
+            !SwitchOffRule.isPersonsLauncher(resolved.pkg, snapshot) && resolved.pkg != SwitchOffRule.OUR_LAUNCHER) {
+            return resolved
+        }
+        val google = resolveStockLauncherComponent(snapshot, stockLaunchers)
+        val state = snapshot.packages[google.pkg]?.enabled
+        if (google.pkg in snapshot.packages && (state == EnabledState.ENABLED || state == EnabledState.DEFAULT)) return google
+        return null
     }
 
     /**

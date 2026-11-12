@@ -57,13 +57,20 @@ row.
   server-side config the launcher downloads (no local package involved), the scan shows
   the launcher's own boot receiver and jobs — and the fix is the launcher clear + restart
   and the secure settings, not a package removal.
-- **It cannot block one single broadcast receiver or one single provider.** The plan's
-  vocabulary (`Op`) has no per-receiver or per-provider verb, and adding one would mean
-  inventing shell commands outside the renderer. What the plan does instead is remove the
-  nominating package itself (uninstall for system apps when uninstallBloat is on, disable
-  otherwise) — a package that is gone cannot wake at boot, run its jobs or serve its
-  provider. If a receiver belongs to a package the person must keep, the scan still shows
-  it, and the person decides.
+- **It can now block one single broadcast receiver, service, activity or provider —
+  RFC-SHOP-2 (2026-11-12).** The old note that the plan's vocabulary (`Op`) has no
+  per-component verb was true until 2026-11-12: `Op.DisableComponent` /
+  `Op.EnableComponent` now render `pm disable-user --user 0 <pkg>/<cls>` /
+  `pm enable --user 0 <pkg>/<cls>` through the renderer, with inverse, codec, journal
+  and restore handling. Clean Stock Home uses them (section 3.5) for the launcher's own
+  ad components — the four manifest-proven tvlauncher ones, plus whatever the scan finds
+  in a launcher package — so the Shop tab cannot come back after a reboot. The launcher
+  itself is still never touched, and a component of a package the person must keep is
+  only switched off when it is a launcher ad component, never its home entry point.
+  **The Secure keys are not the fix:** `PERSONALIZED_ADS` / `DISCOVER_ENABLED` /
+  `SPONSORED_CONTENT` are not AOSP-standard keys and no consumer of them is proven in
+  the launcher — the plan still sets them (harmless), but the reboot-proof lever is the
+  component disable, not the keys.
 - **It cannot prove the phone-side timing.** The scan runs before the plan is built, so
   the Found screen can already show the deep-scan group on the first run — no second
   connect is needed.

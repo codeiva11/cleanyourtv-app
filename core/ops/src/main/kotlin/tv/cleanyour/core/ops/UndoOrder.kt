@@ -1,6 +1,7 @@
 package tv.cleanyour.core.ops
 
 import tv.cleanyour.core.model.ChangeRecord
+import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.RemotePath
@@ -32,6 +33,11 @@ object UndoOrder {
         data class PackageEnabled(val pkg: PackageName) : Target { override val phase get() = Phase.PACKAGES }
         data class Setting(val key: SettingKey) : Target { override val phase get() = Phase.SETTINGS }
         data class Helper(val pkg: PackageName) : Target { override val phase get() = Phase.HELPER }   // RFC-HELPER-1
+        // RFC-SHOP-2: one component of a package (its ad receiver, its ad service). Phase
+        // PACKAGES, like a package state: it goes back with the package states, before
+        // settings and the home screen. Keyed by component, not by package — two components
+        // of one launcher are two items, and each goes back on its own.
+        data class ComponentEnabled(val component: Component) : Target { override val phase get() = Phase.PACKAGES }
         data object Home : Target { override val phase get() = Phase.HOME }
         data class App(val pkg: PackageName) : Target { override val phase get() = Phase.APPS }
         data class File(val path: RemotePath) : Target { override val phase get() = Phase.FILES }
@@ -41,6 +47,8 @@ object UndoOrder {
         is Op.Disable -> Target.PackageEnabled(op.pkg)
         is Op.Enable -> Target.PackageEnabled(op.pkg)
         is Op.DefaultState -> Target.PackageEnabled(op.pkg)
+        is Op.DisableComponent -> Target.ComponentEnabled(op.component)
+        is Op.EnableComponent -> Target.ComponentEnabled(op.component)
         is Op.SettingsPut -> Target.Setting(op.key)
         is Op.SetHome -> Target.Home
         is Op.Install -> Target.App(op.pkg)

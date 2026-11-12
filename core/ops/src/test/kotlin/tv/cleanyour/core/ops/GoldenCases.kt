@@ -129,6 +129,16 @@ object GoldenCases {
             Op.AccessibilityRemove(null, HelperLines.SERVICE, offIfEmpty = true), null),
         GoldenCase("69-helper-timer", "Home button helper: the safety timer of its check",
             Op.ArmHelperWatchdog(HelperLines.SERVICE, 150, token, offIfEmpty = true), null),
+        // 70 ─ RFC-SHOP-2 (2026-11-12): one ad component of the stock launcher, switched off.
+        // A component disable writes into the per-user package-restrictions, so it survives a
+        // reboot — the step that stops the Shop tab and sponsored banners coming back.
+        GoldenCase("70-disable-component", "Switch off one ad component of the stock launcher; it was on",
+            Op.DisableComponent(Component(PackageName("com.google.android.tvlauncher"),
+                "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")), Prior()),
+        // 71 ─ RFC-SHOP-2: the same component, switched back on (the undo of 70).
+        GoldenCase("71-enable-component", "Switch back on an ad component we switched off",
+            Op.EnableComponent(Component(PackageName("com.google.android.tvlauncher"),
+                "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")), Prior()),
     )
     const val READER = "com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
 }
@@ -138,6 +148,8 @@ object GoldenText {
     fun describe(op: Op): String = when (op) {
         is Op.Disable -> "Disable pkg=${op.pkg.value}"
         is Op.Enable -> "Enable pkg=${op.pkg.value}"
+        is Op.DisableComponent -> "DisableComponent component=${op.component.flat}"
+        is Op.EnableComponent -> "EnableComponent component=${op.component.flat}"
         is Op.DefaultState -> "DefaultState pkg=${op.pkg.value}"
         is Op.Install -> "Install apk=${op.apk.absolute} sha256=${op.sha256.hex} pkg=${op.pkg.value} versionCode=${op.versionCode} signer=${op.signer.hex} flags=${op.flags.sortedBy { it.name }.joinToString(",") { it.name }}"
         is Op.InstallStream -> "InstallStream blob=${blob(op.blob)} sha256=${op.sha256.hex} pkg=${op.pkg.value} versionCode=${op.versionCode} signer=${op.signer.hex}"

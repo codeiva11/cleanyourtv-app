@@ -3,6 +3,7 @@ package tv.cleanyour.core.planner
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.GroupDefault
 import tv.cleanyour.core.model.InstallFlag
@@ -311,15 +312,27 @@ class DefaultPlanner(
             }
             keepNames = choices.kept.filter { installed(it) }.map { name(it) }.sorted()
 
-            if (choices.cleanStockHome && ReaEngine.isStockGoogleTvLauncher(snapshot)) {
-                cleanStockHome(stockLaunchers, choices.kept, req.ramByPackage, choices.uninstallBloat)
+            // RFC-SHOP-2 (2026-11-12): the gate is any home the plan knows how to clean — a
+            // vendor launcher's Shop tab (the Skyworth SWTV's Coocaa one) is served by the
+            // vendor's own ad packages and ad components, not by Google's, so gating on a Google
+            // launcher skipped the whole clean-up on that TV and the Shop tab came back after
+            // every reboot. Fire OS and a person's launcher are out by construction
+            // (ReaEngine.isCleanStockHomeEligible, and the Fire OS / person's-launcher tests
+            // pin that).
+            if (choices.cleanStockHome && ReaEngine.isCleanStockHomeEligible(snapshot)) {
+                cleanStockHome(stockLaunchers, choices.kept, req.ramByPackage, choices.uninstallBloat, req.deepScan)
             }
         }
 
         fun cleanStockHome(stockLaunchers: List<Component>, kept: Set<PackageName> = emptySet(), ramByPackage: Map<PackageName, Int> = emptyMap(),
             // S1: the uninstall toggle reaches here. OFF means the Shop/ad packages are only
             // disabled, never uninstalled — not even the core ones.
-            uninstallBloat: Boolean = true) {
+            uninstallBloat: Boolean = true,
+            // RFC-SHOP-2: the deep scan's evidence for the launcher packages. cleanStockHome is a
+            // sibling of setup(), so it cannot see setup's req — the scan is passed in, like the
+            // RAM map. Null means no scan ran, and section 3.5 then only uses the hardcoded
+            // tvlauncher components.
+            deepScan: DeepScanResult? = null) {
             val stockRows = mutableListOf<RowSummary>()
 
             // 0. Ensure Google Play Store and external storage stay installed, enabled and safe
@@ -332,7 +345,12 @@ class DefaultPlanner(
             // 1. Clear pending ad notifications FIRST (S2): the provider belongs to
             // tvrecommendations, so the delete must run while that package is still on the TV.
             // After the uninstall below the provider is gone and this step fails every run.
-            step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
+            // RFC-SHOP-2: only a TV that actually has tvrecommendations installed — on a TV
+            // without it (a Coocaa or Amazon home) the delete would fail every run and show as a
+            // failed step, for nothing.
+            if (installed(ReaEngine.STOCK_TV_RECOMMENDATIONS)) {
+                step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
+            }
 
             // 2. Permanently uninstall every ad, recommendation, and Shop tab provider.
             //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct
@@ -379,16 +397,39 @@ class DefaultPlanner(
             step(Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.DISCOVER_ENABLED]), GROUP_STOCK_CLEAN, "Permanent block: Discover & Shop tab injection", FailurePolicy.CONTINUE)
             step(Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0"), Prior(settingValue = snapshot.settings[SettingKey.SPONSORED_CONTENT]), GROUP_STOCK_CLEAN, "Permanent block: sponsored promotional channels", FailurePolicy.CONTINUE)
 
+            // 3.5. RFC-SHOP-2 (2026-11-12): switch off the launcher's own ad components, so the
+            // Shop tab and the sponsored banners cannot come back after a reboot. This is the step
+            // the 0.4.7-33 plan never had: nothing before it persisted past a boot, because the
+            // launcher re-reads its ad signals on start and re-draws its Shop tab from the server.
+            // A component disable writes into the per-user package-restrictions, so it survives a
+            // reboot; the launcher itself is never touched, and its home component and its
+            // main/home activities are excluded by findLauncherAdComponents. ORDER: after the
+            // uninstalls (section 2) — the components of an uninstalled package are gone anyway —
+            // and BEFORE the launcher's data wipe and restart (section 4), so the restart runs
+            // with them already off. CONTINUE on failure: a TV whose firmware refuses a component
+            // must not lose the rest of the clean-up.
+            for (c in ReaEngine.findLauncherAdComponents(deepScan, snapshot)) {
+                step(Op.DisableComponent(c), null, GROUP_STOCK_CLEAN, "Switching off the launcher ad component ${c.flat}", FailurePolicy.CONTINUE)
+            }
+
             // Speed up TV performance by disabling UI animation lag
             step(Op.SettingsPut(SettingKey.WINDOW_ANIMATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.WINDOW_ANIMATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up window animations", FailurePolicy.CONTINUE)
             step(Op.SettingsPut(SettingKey.TRANSITION_ANIMATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.TRANSITION_ANIMATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up transition animations", FailurePolicy.CONTINUE)
             step(Op.SettingsPut(SettingKey.ANIMATOR_DURATION_SCALE, "0"), Prior(settingValue = snapshot.settings[SettingKey.ANIMATOR_DURATION_SCALE]), GROUP_STOCK_CLEAN, "Speeding up animator duration", FailurePolicy.CONTINUE)
 
             // 4. CRITICAL: Clear launcher's cached ads and Shop/Discover tabs from its SQLite database,
-            //    then restart it so the clean layout takes effect immediately.
-            val stock = ReaEngine.resolveStockLauncherComponent(snapshot, stockLaunchers)
-            step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.CONTINUE)
-            step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.CONTINUE)
+            //    then restart it so the clean layout takes effect immediately. RFC-SHOP-2: the
+            //    launcher is the TV's own home when it is a real, installed launcher (a Coocaa
+            //    launcher on an unlisted TV as well as a Google one), else the Google stock
+            //    component when that is installed and on — the old code always used a Google
+            //    component, even on a TV with no Google launcher at all, so `pm clear` and the
+            //    restart failed every run there. When there is no launcher to clear (HOME
+            //    undecided, no Google launcher) the steps are skipped, not failed.
+            val stock = ReaEngine.stockHomeToClean(snapshot, stockLaunchers)
+            if (stock != null) {
+                step(Op.ClearPackage(stock.pkg), null, GROUP_STOCK_CLEAN, "Clearing launcher cached ads and Shop tab", FailurePolicy.CONTINUE)
+                step(Op.RestartHome(stock), null, GROUP_STOCK_CLEAN, "Restarting clean stock home screen", FailurePolicy.CONTINUE)
+            }
         }
 
         // D39 ladder: streaming install when the TV advertises `cmd`, else push to tmp and pm install.
@@ -732,6 +773,8 @@ class DefaultPlanner(
         fun packageOf(op: Op): PackageName? = when (op) {
             is Op.Disable -> op.pkg
             is Op.Enable -> op.pkg
+            is Op.DisableComponent -> op.component.pkg
+            is Op.EnableComponent -> op.component.pkg
             is Op.DefaultState -> op.pkg
             is Op.Uninstall -> op.pkg
             is Op.InstallExisting -> op.pkg

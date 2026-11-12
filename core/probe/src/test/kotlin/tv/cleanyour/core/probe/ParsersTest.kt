@@ -73,6 +73,40 @@ class ParsersTest {
         assertEquals(emptyMap(), DumpsysPackageParser.parse(seq("    pkgFlags=[ SYSTEM ]\n" + "x".repeat(LINE_CAP + 1))))
     }
 
+    // RFC-SHOP-2 (2026-11-12): the per-suspect dump's Services:/Activities: sections and the
+    // per-user disabled-components list are read too — the planner runs its ad-component filter
+    // over them for launcher packages, and the already-off list is what keeps Undo from
+    // switching on a component that was off before the plan.
+    @Test fun packageDumpReadsServicesActivitiesAndDisabledComponents() {
+        val info = DeepScanParser.packageDump(seq(
+            "Package [com.vendor.launcher] (1a2b3c):\n" +
+            "    Receivers:\n" +
+            "      com.vendor.launcher/.AdsBootReceiver:\n" +
+            "    Services:\n" +
+            "      com.vendor.launcher.ads.AdService:\n" +
+            "      com.vendor.launcher.ImageLoader:\n" +
+            "    Activities:\n" +
+            "      com.vendor.launcher/.MainActivity:\n" +
+            "      com.vendor.launcher/.ShopActivity:\n" +
+            "    Providers:\n" +
+            "      com.vendor.launcher.ads.AdProvider:\n" +
+            "        authority=com.vendor.launcher.ads\n" +
+            "    signatures:\n" +
+            "      " + "bb".repeat(32) + "\n" +
+            "    User 0: ceDataInode=1 installed=true hidden=false suspended=false stopped=false notLaunched=false enabled=0 instant=false virtual=false\n" +
+            "      disabledComponents:\n" +
+            "      com.vendor.launcher/com.vendor.launcher.ads.OldAdService\n" +
+            "      enabledComponents:\n" +
+            "      com.vendor.launcher/.MainActivity\n"
+        ))
+        assertEquals(listOf(".AdsBootReceiver"), info.receivers)
+        assertEquals(listOf("com.vendor.launcher.ads.AdService", "com.vendor.launcher.ImageLoader"), info.services)
+        assertEquals(listOf(".MainActivity", ".ShopActivity"), info.activities)
+        assertEquals(listOf("com.vendor.launcher.ads.AdProvider"), info.providers)
+        assertEquals("bb".repeat(32), info.signatureHex)
+        assertEquals(listOf(Component(p("com.vendor.launcher"), "com.vendor.launcher.ads.OldAdService")), info.disabledComponents)
+    }
+
     @Test fun home() {
         val claimants = HomeParser.parse(seq(ProbeFixtures.res("mitv/query-home.txt")))
         assertEquals(HomeClaimant(c("com.google.android.tvlauncher/.MainActivity"), 2), claimants.first())

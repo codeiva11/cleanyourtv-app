@@ -1,0 +1,11 @@
+# Switch back on an ad component we switched off
+op: EnableComponent component=com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity
+privilege: PROFILE_STEP
+timeout_ms: 30000
+stdout_cap: 65536
+line: 'pm' 'enable' '--user' '0' 'com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity'
+transfer: none
+verify: none
+prior: empty
+inverse: DisableComponent component=com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity
+inverse_line: 'pm' 'disable-user' '--user' '0' 'com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity'

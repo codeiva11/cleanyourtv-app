@@ -50,6 +50,14 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             Op.Read(ProbeKind.DISABLED), T_PM, CAP_DEFAULT)
         is Op.Enable -> Rendered(op, lines(line(PM, "enable", USER, "0", pkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.DISABLED), T_PM, CAP_DEFAULT)
+        // RFC-SHOP-2: one component of a package. `pm disable-user` / `pm enable` take a
+        // PACKAGE_OR_COMPONENT written as "package/class", and the state they set is a
+        // per-user override, so it survives a reboot. No verify read: the check reads the
+        // state pm itself prints back (see check, below).
+        is Op.DisableComponent -> Rendered(op, lines(line(PM, "disable-user", USER, "0", writeComp(op.component))), null, Privilege.PROFILE_STEP,
+            null, T_PM, CAP_DEFAULT)
+        is Op.EnableComponent -> Rendered(op, lines(line(PM, "enable", USER, "0", writeComp(op.component))), null, Privilege.PROFILE_STEP,
+            null, T_PM, CAP_DEFAULT)
         is Op.DefaultState -> Rendered(op, lines(line(PM, "default-state", USER, "0", writePkg(op.pkg))), null, Privilege.PROFILE_STEP,
             Op.Read(ProbeKind.PACKAGE_DUMP, ReadArg.Pkg(op.pkg)), T_PM, CAP_DEFAULT)
         is Op.Install -> {
@@ -240,6 +248,11 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             EnabledState.DISABLED_USER, EnabledState.DISABLED -> Op.Disable(op.pkg)
             null, EnabledState.DEFAULT -> null
         }
+        // RFC-SHOP-2: a component disable is undone by the enable, and back. No prior is
+        // read: the planner only emits a disable for a component the deep scan shows enabled,
+        // so the state before us was on — and an enable is only ever the undo of a disable.
+        is Op.DisableComponent -> Op.EnableComponent(op.component)
+        is Op.EnableComponent -> Op.DisableComponent(op.component)
         is Op.Install -> if (prior.present == false) Op.Uninstall(op.pkg) else null   // reinstalling the previous APK needs a blob we do not keep in 0.1
         is Op.InstallStream -> if (prior.present == false) Op.Uninstall(op.pkg) else null
         is Op.SettingsPut -> if (op.key == SettingKey.ADB_ENABLED || op.key == SettingKey.ADB_WIFI_ENABLED) null   // never 1 from the app: the user turns debugging on from the TV
@@ -286,6 +299,21 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             }
             is Op.SetHome -> homeIs(op.component, lines)
             is Op.VerifyHome -> homeIs(op.expected, lines)
+            // RFC-SHOP-2: `pm` prints the state it read back — "Package <pkg>/<cls> new state:
+            // disabled-user" — which is not always the state asked for (a package the platform
+            // will not switch prints its old state and exits zero, bytescope.dev/pm-disable-user,
+            // so the exit code is no signal). The line is matched by its "Package <pkg>/<cls>
+            // new state: " head, for this component (pm prints it shortened — see
+            // componentNewState), so a wrong component's line never verifies this one. The op
+            // runs one pm command for one component, so its own output holds that component's line.
+            is Op.DisableComponent -> when (componentNewState(lines, op.component)) {
+                "disabled", "disabled-user" -> VerifyResult.Ok
+                else -> mismatch("Package ${op.component.flat} new state: disabled-user")
+            }
+            is Op.EnableComponent -> when (componentNewState(lines, op.component)) {
+                "enabled" -> VerifyResult.Ok
+                else -> mismatch("Package ${op.component.flat} new state: enabled")
+            }
             is Op.ArmHomeWatchdog -> if (lines.any { PID_RE.matches(it) }) VerifyResult.Ok else mismatch("a pid from pgrep -f ${processPattern(op.token)}")
             is Op.KillWatchdog -> if (lines.none { PID_RE.matches(it) }) VerifyResult.Ok else mismatch("no pid from pgrep -f ${processPattern(op.token)}")
             is Op.ConfirmHome -> if (lines.any { it.startsWith(EMPTY_FILE_SHA256) }) VerifyResult.Ok else mismatch("$EMPTY_FILE_SHA256 (empty token file)")
@@ -319,6 +347,21 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
     }
 
     private fun settingOf(lines: List<String>, key: String): String? = lines.firstOrNull { it.startsWith("$key=") }?.removePrefix("$key=")
+
+    // RFC-SHOP-2: the state pm printed back for this component, or null when it printed no
+    // state line for it at all (an error, or a firmware that prints none). pm prints the
+    // component shortened (ComponentName.flattenToShortString): a class in the package prints
+    // as ".home.Foo" for "pkg.home.Foo", a class already relative prints as it is, and any
+    // other class prints in full.
+    private fun componentNewState(lines: List<String>, c: Component): String? {
+        val short = when {
+            c.cls.startsWith(".") -> c.cls
+            c.cls.startsWith(c.pkg.value + ".") -> "." + c.cls.removePrefix(c.pkg.value + ".")
+            else -> c.cls
+        }
+        val prefix = "Package ${c.pkg.value}/$short new state: "
+        return lines.firstOrNull { it.startsWith(prefix) }?.substringAfter(prefix)?.trim()
+    }
 
     private fun installed(pkg: PackageName, versionCode: Long, dump: String): VerifyResult {
         val found = PackageDump.versionCode(dump)
@@ -365,6 +408,15 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         val v = pkg(p)
         val reason = Denylist.staticReason(v)
         require(reason == null) { "protected package $v: $reason" }
+        return v
+    }
+    // RFC-SHOP-2: a component of a package. comp() checks the package and the class; the
+    // static denylist is refused here as well, so a component of a protected package never
+    // renders (a component of the launcher itself is fine — the launcher is not denylisted).
+    private fun writeComp(c: Component): String {
+        val v = comp(c)
+        val reason = Denylist.staticReason(c.pkg.value)
+        require(reason == null) { "protected package ${c.pkg.value}: $reason" }
         return v
     }
     private fun comp(c: Component): String {

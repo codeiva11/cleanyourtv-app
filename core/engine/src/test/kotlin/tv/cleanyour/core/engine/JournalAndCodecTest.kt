@@ -149,6 +149,8 @@ class PlanJsonTest {
         val path = tv.cleanyour.core.model.RemotePath(tv.cleanyour.core.model.RemoteDir.TMP, listOf("a", "b.apk"))
         val ops = listOf<Op>(
             Op.Disable(launcher.pkg), Op.Enable(launcher.pkg), Op.DefaultState(launcher.pkg),
+            // RFC-SHOP-2: one ad component of a package.
+            Op.DisableComponent(launcher), Op.EnableComponent(launcher),
             Op.Install(path, sha, launcher.pkg, 7, sha, setOf(tv.cleanyour.core.model.InstallFlag.REPLACE)), Op.Install(path, sha, launcher.pkg, 7, sha, emptySet()),
             Op.InstallStream(blob, sha, launcher.pkg, 7, sha), Op.Uninstall(launcher.pkg),
             Op.InstallExisting(launcher.pkg), Op.ClearPackage(launcher.pkg),

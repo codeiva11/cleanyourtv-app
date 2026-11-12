@@ -74,6 +74,28 @@ class UndoOrderTest {
         assertEquals(Op.RemoveFile(cfg), r.inverse(order.last().op, order.last().prior!!))
     }
 
+    // RFC-SHOP-2 (2026-11-12): a component switch is its own undo item, keyed by component —
+    // two components of one launcher go back separately, in the package-states phase, and a
+    // component's enable undoes that component's disable and nothing else.
+    @Test fun componentSwitchesAreTheirOwnUndoItemsInThePackagePhase() {
+        val ads = Component(PackageName("com.google.android.tvlauncher"),
+            "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")
+        val receiver = Component(PackageName("com.google.android.tvlauncher"),
+            "com.google.android.tvlauncher.home.AdsPersonalizationAwarenessNotificationReceiver")
+        val changes = listOf(
+            rec("p", 0, 100, Op.DisableComponent(ads), null),
+            rec("p", 1, 101, Op.DisableComponent(receiver), null),
+            rec("p", 2, 102, Op.Disable(a), Prior(packageState = EnabledState.ENABLED)),
+        )
+        // Within the package-states phase the newest first touch goes first.
+        assertEquals(
+            listOf(UndoOrder.Target.PackageEnabled(a), UndoOrder.Target.ComponentEnabled(receiver), UndoOrder.Target.ComponentEnabled(ads)),
+            UndoOrder.undoOrder(changes).map { UndoOrder.target(it.op) })
+        assertEquals(UndoOrder.Phase.PACKAGES, UndoOrder.target(Op.DisableComponent(ads))!!.phase)
+        assertEquals(Op.EnableComponent(ads), ShellRenderer().inverse(Op.DisableComponent(ads), Prior()))
+        assertEquals(Op.DisableComponent(ads), ShellRenderer().inverse(Op.EnableComponent(ads), Prior()))
+    }
+
     @Test fun tiesOnTimeBreakOnThePlanStepAndTransientOpsHaveNoTarget() {
         val x = rec("p", 5, 10, Op.Disable(a), Prior(packageState = EnabledState.ENABLED))
         val y = rec("p", 2, 10, Op.Enable(a), Prior(packageState = EnabledState.DEFAULT))

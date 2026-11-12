@@ -614,6 +614,8 @@ class DefaultEngine(
 
     private fun undoes(rollbackOp: Op, stepOp: Op): Boolean = when (rollbackOp) {
         is Op.Enable -> stepOp is Op.Disable && stepOp.pkg == rollbackOp.pkg
+        // RFC-SHOP-2: the enable of a component undoes that component's disable, and only it.
+        is Op.EnableComponent -> stepOp is Op.DisableComponent && stepOp.component == rollbackOp.component
         is Op.SetHome -> stepOp is Op.SetHome
         is Op.AccessibilityRemove -> stepOp is Op.AccessibilityAdd && stepOp.component == rollbackOp.component   // RFC-HELPER-1
         is Op.SettingsPut -> stepOp is Op.SettingsPut && stepOp.key == rollbackOp.key && rollbackOp.key == SettingKey.ACCESSIBILITY_ENABLED
@@ -1312,6 +1314,8 @@ internal object Replay {
 internal object Staleness {
     fun writeTarget(op: Op): PackageName? = when (op) {
         is Op.Disable -> op.pkg
+        is Op.DisableComponent -> op.component.pkg
+        is Op.EnableComponent -> op.component.pkg
         is Op.DefaultState -> op.pkg
         is Op.Uninstall -> op.pkg
         is Op.InstallExisting -> op.pkg

@@ -329,6 +329,40 @@ class PlannerTest {
     // Issue #2 (A1): Fire OS's own home screen is never switched off, and nothing of the new home
     // screen is installed for it: an unlisted Fire TV Edition set on the Amazon sure set, with the
     // TV's facts naming nothing (here the reference TV's), is caught by its packages.
+    // RFC-SHOP-2 (2026-11-12): the Skyworth SWTV's Coocaa launcher has no Google launcher at
+    // all, so the old gate skipped the whole clean-up and the Shop tab came back after every
+    // reboot. On a vendor home the clean-up runs: the vendor ad packages are uninstalled, the
+    // launcher's ad components are switched off (section 3.5), and the vendor launcher itself is
+    // cleared and restarted — never uninstalled or disabled as a package.
+    @Test fun cleanStockHomeRunsOnAVendorHomeAndSwitchesOffItsAdComponents() {
+        val vendor = Component(PackageName("com.vendor.launcher"), ".MainActivity")
+        val snap = snapshot(home = vendor, claimants = listOf(vendor),
+            extra = mapOf(vendor.pkg to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "Home", false)))
+            .let { it.copy(packages = it.packages - PackageName("com.google.android.tvlauncher")) }
+            .let { it.copy(contentHash = tv.cleanyour.core.store.SnapshotCodec.hash(it)) }
+        val scan = tv.cleanyour.core.model.DeepScanResult(1, mapOf(
+            vendor.pkg to tv.cleanyour.core.model.DeepScanEvidence(
+                bootReceivers = listOf(".AdsBootReceiver"),
+                services = listOf("com.vendor.launcher.ads.AdService"),
+                activities = listOf(".MainActivity"),
+            ),
+        ))
+        val req = PlanRequest.Setup(tv.cleanyour.core.spec.ProfileResolution.Exact(profile()),
+            choices(cleanStockHome = true, uninstallBloat = true), deepScan = scan)
+        val p = plan(req, snapshot = snap)
+        assertEquals(
+            listOf(
+                Op.DisableComponent(Component(vendor.pkg, ".AdsBootReceiver")),
+                Op.DisableComponent(Component(vendor.pkg, "com.vendor.launcher.ads.AdService")),
+            ),
+            ops(p).filterIsInstance<Op.DisableComponent>(),
+        )
+        assertTrue(ops(p).none { it is Op.Disable && it.pkg == vendor.pkg }, "the launcher itself is never disabled")
+        assertTrue(ops(p).none { it is Op.Uninstall && it.pkg == vendor.pkg }, "the launcher itself is never uninstalled")
+        assertTrue(Op.ClearPackage(vendor.pkg) in ops(p), "the launcher's cached ads are cleared")
+        assertTrue(Op.RestartHome(vendor) in ops(p), "the launcher is restarted with them off")
+    }
+
     @Test fun aFireOsHomeIsProtectedAndTheCleanUpAloneIsPlanned() {
         val amazon = Component(PackageName("com.amazon.tv.launcher"), ".ui.HomeActivity_vNext")
         val starter = PackageName("com.amazon.firehomestarter")

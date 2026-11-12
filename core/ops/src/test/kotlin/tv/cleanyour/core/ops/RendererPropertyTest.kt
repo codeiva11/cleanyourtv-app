@@ -98,7 +98,7 @@ class RendererPropertyTest {
         else -> Op.ArmHelperWatchdog(service, rnd.nextInt(30, 301), token(), rnd.nextBoolean())
     }
 
-    private fun anyOp(): Op = when (rnd.nextInt(27)) {
+    private fun anyOp(): Op = when (rnd.nextInt(29)) {
         0 -> Op.Disable(pkg())
         1 -> Op.Enable(pkg())
         2 -> Op.DefaultState(pkg())
@@ -125,6 +125,10 @@ class RendererPropertyTest {
         23 -> Op.InstallExisting(pkg())
         24 -> Op.ClearPackage(pkg())
         25 -> Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications")
+        // RFC-SHOP-2: one component of a package. comp() never yields a denylisted package
+        // (pkg() filters those), so the renderer never refuses these here.
+        26 -> Op.DisableComponent(comp())
+        27 -> Op.EnableComponent(comp())
         else -> Op.DebugOff
     }
 
@@ -338,6 +342,8 @@ class RendererPropertyTest {
             Op.Read(ProbeKind.LAUNCHER_FILE_SHA256, ReadArg.Path(RemotePath(RemoteDir.OVERLAY, listOf("order.txt")))),
             Op.Read(ProbeKind.LAUNCHER_FILE_SHA256),
             Op.Disable(PackageName("com.android.systemui")),
+            // RFC-SHOP-2: a component of a denylisted package is refused, like the package disable.
+            Op.DisableComponent(Component(PackageName("com.android.systemui"), ".SystemUI")),
             Op.Disable(PackageName("com.android.providers.media.module")),
             Op.Disable(PackageName("com.android.wifi.resources")),
             Op.Uninstall(PackageName("com.google.android.gms")),

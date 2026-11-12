@@ -86,6 +86,27 @@ class CheckTest {
         bad(r.check(Op.Install(RemotePath(RemoteDir.TMP, listOf("x.apk")), Sha256("a".repeat(64)), launcher.pkg, 7, Sha256("b".repeat(64)), emptySet()), "", null))
     }
 
+    // RFC-SHOP-2 (2026-11-12): a component switch is verified against the state pm itself
+    // prints back — "Package <pkg>/<cls> new state: disabled-user" — because the exit code is
+    // no signal (pm prints the state it read back, which is not always the state asked for).
+    // pm prints the component shortened (flattenToShortString), so a fully-qualified class reads
+    // back as "pkg/.home.Foo"; a class already relative reads back as it is.
+    @Test fun componentSwitchesReadTheStatePmPrintsBack() {
+        val c = Component(PackageName("com.google.android.tvlauncher"),
+            "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")
+        ok(r.check(Op.DisableComponent(c), "Package com.google.android.tvlauncher/.home.featuredcarousel.WhyThisAdActivity new state: disabled-user\n", null))
+        ok(r.check(Op.DisableComponent(c), "Package com.google.android.tvlauncher/.home.featuredcarousel.WhyThisAdActivity new state: disabled\n", null))
+        bad(r.check(Op.DisableComponent(c), "Package com.google.android.tvlauncher/.home.featuredcarousel.WhyThisAdActivity new state: enabled\n", null))
+        bad(r.check(Op.DisableComponent(c), "", null))
+        ok(r.check(Op.EnableComponent(c), "Package com.google.android.tvlauncher/.home.featuredcarousel.WhyThisAdActivity new state: enabled\n", null))
+        bad(r.check(Op.EnableComponent(c), "Package com.google.android.tvlauncher/.home.featuredcarousel.WhyThisAdActivity new state: disabled-user\n", null))
+        // A state line for a different component does not verify this one.
+        bad(r.check(Op.DisableComponent(c), "Package com.google.android.tvlauncher/.MainActivity new state: disabled-user\n", null))
+        // A relative class prints as it is.
+        val rel = Component(PackageName("com.vendor.launcher"), ".AdsBootReceiver")
+        ok(r.check(Op.DisableComponent(rel), "Package com.vendor.launcher/.AdsBootReceiver new state: disabled-user\n", null))
+    }
+
     @Test fun uninstallAndFilesAndTheRest() {
         val all = capture.packagesAllText
         bad(r.check(Op.Uninstall(PackageName("com.google.android.youtube.tv")), all, null))

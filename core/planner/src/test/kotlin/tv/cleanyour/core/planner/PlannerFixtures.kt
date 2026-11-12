@@ -70,8 +70,8 @@ object PlannerFixtures {
 
     fun choices(
         kept: Set<PackageName> = emptySet(), extraOff: Set<PackageName> = emptySet(),
-        cleanStockHome: Boolean = false, autoDebloat: Boolean = false,
-    ) = Choices(kept, extraOff, keepDebuggingOn = false, cleanStockHome = cleanStockHome, autoDebloat = autoDebloat)
+        cleanStockHome: Boolean = false, autoDebloat: Boolean = false, uninstallBloat: Boolean = false,
+    ) = Choices(kept, extraOff, keepDebuggingOn = false, cleanStockHome = cleanStockHome, autoDebloat = autoDebloat, uninstallBloat = uninstallBloat)
 
     fun setup(profile: Profile? = profile(), choices: Choices = choices()) =
         PlanRequest.Setup(profile?.let { ProfileResolution.Exact(it) } ?: ProfileResolution.None(listOf(stock)), choices)

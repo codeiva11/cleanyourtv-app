@@ -10,7 +10,11 @@ object ChangeRecords {
     // The ops that change the TV. Reads, waits, the watchdog and process starts are not changes.
     fun isChange(op: Op): Boolean = when (op) {
         is Op.Disable, is Op.Enable, is Op.DefaultState, is Op.Install, is Op.InstallStream, is Op.Uninstall, is Op.InstallExisting,
-        is Op.SettingsPut, is Op.SetHome, is Op.PushAsset, is Op.RemoveFile -> true
+        is Op.SettingsPut, is Op.SetHome, is Op.PushAsset, is Op.RemoveFile,
+        // RFC-SHOP-2: a component switch is a lasting change like a package switch — without
+        // this, a component disable is never recorded, so Undo and the restore files never
+        // see it and the ad component stays off after the person undoes everything.
+        is Op.DisableComponent, is Op.EnableComponent -> true
         else -> false
     }
 

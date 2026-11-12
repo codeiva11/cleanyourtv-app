@@ -46,6 +46,10 @@ class ChangeRecordsTest {
         assertEquals(listOf(Op.Enable(b), Op.Disable(a)), ChangeRecords.fromJournals(listOf(records, earlier)).map { it.op }, "sorted by time across journals")
         assertTrue(ChangeRecords.isChange(Op.PushAsset(BlobRef(Sha256("a".repeat(64)), 1, "p"), FileOverlayTransport.CONFIG, Sha256("a".repeat(64)))))
         assertTrue(!ChangeRecords.isChange(Op.ArmHomeWatchdog(Samples.stockLauncher, 120, tv.cleanyour.core.model.RunToken("0123456789abcdef"))))
+        // RFC-SHOP-2: a component switch is a lasting change like a package switch — without
+        // this, a component disable is never recorded, so Undo and the restore files never see it.
+        assertTrue(ChangeRecords.isChange(Op.DisableComponent(Samples.stockLauncher)))
+        assertTrue(ChangeRecords.isChange(Op.EnableComponent(Samples.stockLauncher)))
     }
 }
 

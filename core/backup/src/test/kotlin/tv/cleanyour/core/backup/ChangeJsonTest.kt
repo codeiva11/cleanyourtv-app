@@ -33,6 +33,8 @@ class ChangeJsonTest {
     // One of every Op, so a new variant without a codec entry fails to compile (exhaustive when) or here.
     private val everyOp: List<Op> = listOf(
         Op.Disable(pkg), Op.Enable(pkg), Op.DefaultState(pkg),
+        // RFC-SHOP-2: one ad component of a package.
+        Op.DisableComponent(comp), Op.EnableComponent(comp),
         Op.Install(path, blob.sha256, pkg, 7, Samples.zeroHash, setOf(InstallFlag.REPLACE)),
         Op.InstallStream(blob, blob.sha256, pkg, 8, Samples.zeroHash), Op.Uninstall(pkg),
         Op.InstallExisting(pkg), Op.ClearPackage(pkg),

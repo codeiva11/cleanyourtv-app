@@ -251,6 +251,134 @@ class ReaEngineTest {
         assertTrue(candidates.isEmpty())
     }
 
+    // RFC-SHOP-2 (2026-11-12): the four manifest-proven tvlauncher ad components are the ones
+    // to switch off when tvlauncher is installed — none of them is the home component, so all
+    // four are found, even with no deep scan at all.
+    @Test
+    fun launcherAdComponentsAreTheHardcodedTvlauncherOnes() {
+        val launcher = PackageName("com.google.android.tvlauncher")
+        val snap = Samples.snapshot(
+            packages = mapOf(launcher to state(), PackageName("com.google.android.tvrecommendations") to state()),
+            home = HomeResolution(Component(launcher, ".MainActivity"), listOf(HomeClaimant(Component(launcher, ".MainActivity"), 2))),
+        )
+        assertEquals(ReaEngine.TVLAUNCHER_AD_COMPONENTS.sortedBy { it.flat }, ReaEngine.findLauncherAdComponents(null, snap))
+    }
+
+    // RFC-SHOP-2: a launcher with no hardcoded components (a Coocaa launcher on the Skyworth
+    // SWTV) gets only what the deep scan actually saw — an ad service, an ad provider and an
+    // ad boot receiver — and never its home entry point, never a component with no ad signature,
+    // and never one the dump already shows disabled.
+    @Test
+    fun launcherAdComponentsComeFromTheScanForALauncherWithoutHardcodedOnes() {
+        val vendor = PackageName("com.vendor.launcher")
+        val snap = Samples.snapshot(
+            packages = mapOf(vendor to state(), PackageName("com.google.android.tvrecommendations") to state()),
+            home = HomeResolution(Component(vendor, ".MainActivity"), listOf(HomeClaimant(Component(vendor, ".MainActivity"), 2))),
+        )
+        val scan = DeepScanResult(1, mapOf(
+            vendor to DeepScanEvidence(
+                bootReceivers = listOf(".AdsBootReceiver"),
+                services = listOf("com.vendor.launcher.ads.AdService", "com.vendor.launcher.ImageLoader"),
+                activities = listOf(".MainActivity", ".ShopActivity"),
+                providers = listOf("com.vendor.launcher.ads.AdProvider"),
+                disabledComponents = listOf(Component(vendor, "com.vendor.launcher.ads.OldAdService")),
+            ),
+        ))
+        // ImageLoader matches no signature ("ima" is deliberately not one: it matches "Image"
+        // as well as the ads SDK, and every IMA class also contains "ads"). .ShopActivity is
+        // not ad machinery either — "shop" is not a signature.
+        assertEquals(
+            listOf(
+                Component(vendor, ".AdsBootReceiver"),
+                Component(vendor, "com.vendor.launcher.ads.AdProvider"),
+                Component(vendor, "com.vendor.launcher.ads.AdService"),
+            ),
+            ReaEngine.findLauncherAdComponents(scan, snap),
+        )
+    }
+
+    // RFC-SHOP-2: a hardcoded component the dump already shows disabled was off before us —
+    // never plan it, or Undo would switch on something that was off before the plan.
+    @Test
+    fun launcherAdComponentsNeverIncludeOneThatWasAlreadyOff() {
+        val launcher = PackageName("com.google.android.tvlauncher")
+        val snap = Samples.snapshot(
+            packages = mapOf(launcher to state()),
+            home = HomeResolution(Component(launcher, ".MainActivity"), listOf(HomeClaimant(Component(launcher, ".MainActivity"), 2))),
+        )
+        val off = Component(launcher, "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")
+        val scan = DeepScanResult(1, mapOf(launcher to DeepScanEvidence(disabledComponents = listOf(off))))
+        val found = ReaEngine.findLauncherAdComponents(scan, snap)
+        assertFalse(off in found)
+        assertEquals(3, found.size)
+    }
+
+    // RFC-SHOP-2: Clean Stock Home is eligible on any home the plan knows how to clean — a
+    // vendor launcher's Shop tab is served by the vendor's own ad packages and ad components,
+    // not by Google's — and out on Fire OS, on a person's launcher, and on ours.
+    @Test
+    fun cleanStockHomeIsEligibleOnAnyHomeExceptFireOsAPersonsLauncherOrOurs() {
+        val vendor = PackageName("com.vendor.launcher")
+        val vendorSnap = Samples.snapshot(
+            packages = mapOf(vendor to state(system = true)),
+            home = HomeResolution(Component(vendor, ".MainActivity"), listOf(HomeClaimant(Component(vendor, ".MainActivity"), 2))),
+        )
+        assertTrue(ReaEngine.isCleanStockHomeEligible(vendorSnap))
+        // Fire OS: an Amazon home, whatever its launcher is.
+        val fireFacts = Samples.miTvFacts().copy(brand = "Insignia", manufacturer = "Amazon", model = "AFTDCT99", device = "unknown")
+        val fire = PackageName("com.amazon.tv.launcher")
+        val fireSnap = Samples.snapshot(
+            facts = fireFacts,
+            packages = mapOf(fire to state(system = true)),
+            home = HomeResolution(Component(fire, ".ui.HomeActivity_vNext"), listOf(HomeClaimant(Component(fire, ".ui.HomeActivity_vNext"), 950))),
+        )
+        assertFalse(ReaEngine.isCleanStockHomeEligible(fireSnap))
+        // A person's launcher: a user app claiming HOME.
+        val persons = PackageName("com.example.personslauncher")
+        val personsSnap = Samples.snapshot(
+            packages = mapOf(persons to state(system = false)),
+            home = HomeResolution(Component(persons, ".MainActivity"), listOf(HomeClaimant(Component(persons, ".MainActivity"), 2))),
+        )
+        assertFalse(ReaEngine.isCleanStockHomeEligible(personsSnap))
+        // Ours, in charge.
+        val ours = PackageName("com.gathin.tvhome")
+        val oursSnap = Samples.snapshot(
+            packages = mapOf(ours to state(system = false)),
+            home = HomeResolution(Component(ours, ".MainActivity"), listOf(HomeClaimant(Component(ours, ".MainActivity"), 2))),
+        )
+        assertFalse(ReaEngine.isCleanStockHomeEligible(oursSnap))
+        // A Google launcher installed, HOME undecided: still eligible (the old rule).
+        val googleSnap = Samples.snapshot(
+            packages = mapOf(PackageName("com.google.android.tvlauncher") to state()),
+            home = HomeResolution(null, emptyList()),
+        )
+        assertTrue(ReaEngine.isCleanStockHomeEligible(googleSnap))
+        // HOME undecided and no Google launcher: nothing to clean.
+        val noneSnap = Samples.snapshot(
+            packages = mapOf(PackageName("com.vendor.app") to state()),
+            home = HomeResolution(null, emptyList()),
+        )
+        assertFalse(ReaEngine.isCleanStockHomeEligible(noneSnap))
+    }
+
+    // RFC-SHOP-2: the launcher Clean Stock Home clears and restarts is the TV's own resolved
+    // home when it is real and installed — a vendor launcher as well as a Google one — never a
+    // Google component on a TV with no Google launcher, and never a person's launcher or ours.
+    @Test
+    fun stockHomeToCleanIsTheTvsOwnHomeOrNull() {
+        val vendor = PackageName("com.vendor.launcher")
+        val vendorSnap = Samples.snapshot(
+            packages = mapOf(vendor to state(system = true)),
+            home = HomeResolution(Component(vendor, ".MainActivity"), listOf(HomeClaimant(Component(vendor, ".MainActivity"), 2))),
+        )
+        assertEquals(Component(vendor, ".MainActivity"), ReaEngine.stockHomeToClean(vendorSnap, emptyList()))
+        val noneSnap = Samples.snapshot(
+            packages = mapOf(PackageName("com.vendor.app") to state()),
+            home = HomeResolution(null, emptyList()),
+        )
+        assertEquals(null, ReaEngine.stockHomeToClean(noneSnap, emptyList()))
+    }
+
     @Test
     fun synthesizesRamGroupSeparately() {
         val candidates = listOf(

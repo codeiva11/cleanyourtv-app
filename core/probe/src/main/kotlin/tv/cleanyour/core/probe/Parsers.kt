@@ -253,7 +253,13 @@ object ResumedActivityParser {
 // prints a section in another shape yields nothing for it, never an exception — the scan must
 // not fail Setup for a dump it cannot read. Long lines are dropped, never evaluated.
 object DeepScanParser {
-    data class PackageDumpInfo(val receivers: List<String> = emptyList(), val providers: List<String> = emptyList(), val signatureHex: String? = null)
+    data class PackageDumpInfo(val receivers: List<String> = emptyList(), val providers: List<String> = emptyList(), val signatureHex: String? = null,
+        // RFC-SHOP-2: the Services: and Activities: sections, and the components the per-user
+        // state already has switched off (the "User 0:" block's disabledComponents: list,
+        // printed as flat pkg/cls lines under it). The planner reads these only for launcher
+        // packages; see DeepScanEvidence.
+        val services: List<String> = emptyList(), val activities: List<String> = emptyList(),
+        val disabledComponents: List<Component> = emptyList())
 
     private val JOB = Regex("^JOB #u0a[0-9]+/[0-9]+:\\s+[0-9a-f]+\\s+([A-Za-z][A-Za-z0-9_.]{0,254})/")
     private val SIGNATURE_HEX = Regex("[0-9a-f]{64}")
@@ -280,28 +286,49 @@ object DeepScanParser {
         return out
     }
 
-    // `dumpsys package <pkg>`: the "Receivers:" / "Providers:" sections list one component per
-    // line (trailing colon, filter details after a space); the "signatures:" block carries the
-    // signing certificate's 64-hex digest on the lines that follow it.
+    // `dumpsys package <pkg>`: the "Receivers:" / "Providers:" / "Services:" / "Activities:"
+    // sections list one component per line (trailing colon, filter details after a space); the
+    // "signatures:" block carries the signing certificate's 64-hex digest on the lines that
+    // follow it. The per-user state (the "User 0:" block, after the sections) lists the
+    // components already switched off for that user under "disabledComponents:", one flat
+    // pkg/cls line each — a component listed there was off before us, so the planner never
+    // plans it (Undo must never switch on something that was off before the plan).
     fun packageDump(lines: Sequence<String>): PackageDumpInfo {
         val receivers = mutableListOf<String>()
         val providers = mutableListOf<String>()
+        val services = mutableListOf<String>()
+        val activities = mutableListOf<String>()
+        val disabledComponents = mutableListOf<Component>()
         var signatureHex: String? = null
         var section: String? = null
         var afterSignatures = 0
+        // Inside a "disabledComponents:" list: the lines are components until the first line
+        // that is not one (the "enabledComponents:" header, or any other user-state field).
+        var collectingDisabled = false
         for (raw in skipLong(lines)) {
             val t = raw.trim()
             when (t) {
-                "Receivers:", "Providers:", "Services:", "Activities:" -> { section = t.removeSuffix(":"); afterSignatures = 0; continue }
-                "signatures:" -> { section = null; afterSignatures = 5; continue }
+                "Receivers:", "Providers:", "Services:", "Activities:" -> { section = t.removeSuffix(":"); afterSignatures = 0; collectingDisabled = false; continue }
+                "signatures:" -> { section = null; afterSignatures = 5; collectingDisabled = false; continue }
+                "disabledComponents:" -> { section = null; collectingDisabled = true; continue }
+                "enabledComponents:" -> { section = null; collectingDisabled = false; continue }
             }
+            // A user block or another package ends the section and the disabled list alike.
+            if (t.startsWith("User ") || t.startsWith("Package [")) { section = null; collectingDisabled = false; continue }
             if (afterSignatures > 0) {
                 afterSignatures--
                 SIGNATURE_HEX.find(t)?.value?.let { signatureHex = it }
                 if (signatureHex != null) afterSignatures = 0
                 continue
             }
-            if (section != "Receivers" && section != "Providers") continue
+            if (collectingDisabled) {
+                // A line that is not a component (a scalar user-state field) is skipped, not a
+                // reason to stop: the list ends at the next known header ("enabledComponents:"),
+                // the next user block, or the next package — all handled above.
+                component(t.removeSuffix(":"))?.let { if (it !in disabledComponents) disabledComponents += it }
+                continue
+            }
+            if (section != "Receivers" && section != "Providers" && section != "Services" && section != "Activities") continue
             val first = t.removeSuffix(":").substringBefore(' ')
             // A component (pkg/.Cls) or a fully-qualified class name (the provider's own
             // name, e.g. com.vendor.customizer.AdProvider). Lines with '=' are detail lines
@@ -310,9 +337,14 @@ object DeepScanParser {
                 else if ('=' !in first && first.count { it == '.' } >= 2) first
                 else null
             if (cls == null) continue
-            val list = if (section == "Receivers") receivers else providers
+            val list = when (section) {
+                "Receivers" -> receivers
+                "Providers" -> providers
+                "Services" -> services
+                else -> activities
+            }
             if (cls !in list) list += cls
         }
-        return PackageDumpInfo(receivers, providers, signatureHex)
+        return PackageDumpInfo(receivers, providers, signatureHex, services, activities, disabledComponents)
     }
 }

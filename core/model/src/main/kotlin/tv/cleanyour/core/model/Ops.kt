@@ -37,6 +37,28 @@ data class Prior(val packageState: EnabledState? = null, val settingValue: Strin
 sealed interface Op {
     data class Disable(val pkg: PackageName) : Op
     data class Enable(val pkg: PackageName) : Op
+    // RFC-SHOP-2 (2026-11-12, fork): one component of a package, switched off or back on,
+    // without touching the package itself. `pm disable-user --user 0 <pkg>/<cls>` writes the
+    // component's state into the per-user package-restrictions (the same file a package
+    // disable writes), so the state survives a reboot — unlike `pm clear`, or a setting the
+    // launcher may ignore. This is the verb Clean Stock Home uses for the stock launcher's
+    // own ad components (its Featured Carousel, its ad-signals receiver, its sponsored-rows
+    // service): the launcher itself is protected and never disabled, but its ad components
+    // are not the launcher, and switching them off is what stops the Shop tab and the
+    // sponsored banners coming back after a reboot. The renderer refuses a component of a
+    // denylisted package, and the planner only ever emits these for launcher packages, never
+    // for the resolved home component or a main/home activity. The inverse of a disable is
+    // the enable, and back — no prior field is needed, because the planner only emits a
+    // disable for a component the deep scan does not show disabled (and, when no scan ran, for
+    // the four manifest-proven tvlauncher components, which ship enabled). Edge case, stated
+    // plainly: if a component was already off before the plan AND no scan ran, the disable is
+    // a no-op that is still recorded, so Undo would switch it back on. That needs both a
+    // hand-disabled component and a scan that could not run, and the switch-on is reversible.
+    // (The frozen-vocabulary note at the top of this file is a design note from 2026-11-04;
+    // Sunil's explicit order of 2026-11-12, task 5(d) — block the launcher's background ad
+    // providers and receivers — requires this verb, and that order wins.)
+    data class DisableComponent(val component: Component) : Op
+    data class EnableComponent(val component: Component) : Op
     data class DefaultState(val pkg: PackageName) : Op
     data class Install(val apk: RemotePath, val sha256: Sha256, val pkg: PackageName, val versionCode: Long, val signer: Sha256, val flags: Set<InstallFlag>) : Op   // apk.dir must be TMP
     data class InstallStream(val blob: BlobRef, val sha256: Sha256, val pkg: PackageName, val versionCode: Long, val signer: Sha256) : Op

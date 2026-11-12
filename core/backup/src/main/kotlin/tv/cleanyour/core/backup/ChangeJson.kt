@@ -81,6 +81,8 @@ object ChangeJson {
         when (op) {
             is Op.Disable -> put("pkg", op.pkg.value)
             is Op.Enable -> put("pkg", op.pkg.value)
+            is Op.DisableComponent -> put("component", op.component.flat)
+            is Op.EnableComponent -> put("component", op.component.flat)
             is Op.DefaultState -> put("pkg", op.pkg.value)
             is Op.Install -> {
                 put("apk", path(op.apk)); put("sha256", op.sha256.hex); put("pkg", op.pkg.value)
@@ -126,6 +128,8 @@ object ChangeJson {
     fun decodeOp(o: JsonObject): Op = when (val type = o.str("type")) {
         "disable" -> Op.Disable(o.pkg("pkg"))
         "enable" -> Op.Enable(o.pkg("pkg"))
+        "disable_component" -> Op.DisableComponent(component(o.str("component")))
+        "enable_component" -> Op.EnableComponent(component(o.str("component")))
         "default_state" -> Op.DefaultState(o.pkg("pkg"))
         "install" -> Op.Install(
             decodePath(o.obj("apk")), o.sha("sha256"), o.pkg("pkg"), o.long("versionCode"), o.sha("signer"),
@@ -165,6 +169,8 @@ object ChangeJson {
     fun typeOf(op: Op): String = when (op) {
         is Op.Disable -> "disable"
         is Op.Enable -> "enable"
+        is Op.DisableComponent -> "disable_component"
+        is Op.EnableComponent -> "enable_component"
         is Op.DefaultState -> "default_state"
         is Op.Install -> "install"
         is Op.InstallStream -> "install_stream"

@@ -62,13 +62,14 @@ class DocumentTvRepository(private val store: DocumentStore) : TvRepository {
 }
 
 object TvJson {
-    // Schema 2 (2026-11-12, M4): autoDebloat/uninstallBloat false in a schema-1 record was the
-    // old eligibility gate's doing, not the person's — the gate forced all three toggles false
-    // on any TV without a stock Google launcher, and the stored false then read as an explicit
-    // choice. Decoding a schema-1 record heals those two back to true once; the record is
-    // re-encoded as schema 2, so a false set in Customise AFTER this release is respected.
-    // cleanStockHome is not healed: false is correct there on a TV with no stock launcher.
-    const val SCHEMA = 2
+    // Schema 3 (2026-11-12, RFC-SHOP-2): the 0.4.7-33 gate forced cleanStockHome false on
+    // every TV with no stock Google launcher, so a stored false from that release is the gate's
+    // doing, not the person's — and it left exactly the vendor-launcher TVs (the Skyworth SWTV)
+    // with no clean-up at all. Decoding a schema < 3 record heals it back to true once; the
+    // record is re-encoded as schema 3, so a false set in Customise AFTER this release is
+    // respected. (Schema 2, M4: autoDebloat/uninstallBloat false in a schema-1 record was
+    // healed the same way.)
+    const val SCHEMA = 3
     private val json = Json { prettyPrint = false }
 
     fun encode(tv: Tv): ByteArray = json.encodeToString(JsonElement.serializer(), obj(
@@ -89,7 +90,7 @@ object TvJson {
     fun decode(bytes: ByteArray): Tv {
         val o = json.parseToJsonElement(bytes.decodeToString()).jsonObject
         val schema = o.int("schema") ?: 1
-        require(schema in 1..2) { "unknown tv.json schema" }
+        require(schema in 1..3) { "unknown tv.json schema" }
         val trust = o.getValue("trust").jsonObject
         return Tv(
             id = TvId(o.str("id")!!), nickname = o.str("nickname")!!, room = o.str("room"),
@@ -103,7 +104,12 @@ object TvJson {
             wizard = o.objOrNull("wizard")?.let { w -> WizardDraft(w.int("step") ?: 0, Level.valueOf(w.str("level")!!),
                 w.strings("kept").map(::PackageName).toSet(), w.strings("extraOff").map(::PackageName).toSet(),
                 w.bool("keepDebuggingOn") ?: false, w.str("planId")?.let(::PlanId), w.long("updatedAtMs") ?: 0,
-                cleanStockHome = w.bool("cleanStockHome") ?: true,
+                // RFC-SHOP-2 one-time heal (schema < 3): the 0.4.7-33 gate forced cleanStockHome
+                // false on every TV with no stock Google launcher, and a stored false from before
+                // cannot be told apart from a gate-forced one. A schema-3 record with false is
+                // left alone: by then the gate is isCleanStockHomeEligible, and a false there may
+                // be the person's own switch-off.
+                cleanStockHome = if (schema < 3 && w.bool("cleanStockHome") == false) true else (w.bool("cleanStockHome") ?: true),
                 // M4 one-time heal (schema 1 only): the old gate's false was never a choice.
                 autoDebloat = if (schema == 1 && w.bool("autoDebloat") == false) true else (w.bool("autoDebloat") ?: true),
                 uninstallBloat = if (schema == 1 && w.bool("uninstallBloat") == false) true else (w.bool("uninstallBloat") ?: true)) },

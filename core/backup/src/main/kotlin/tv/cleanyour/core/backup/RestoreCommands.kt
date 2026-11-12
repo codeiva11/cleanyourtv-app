@@ -164,6 +164,8 @@ class RestoreCommands(private val renderer: OpRenderer) {
         private fun packageOf(op: Op): PackageName? = when (op) {
             is Op.Enable -> op.pkg
             is Op.Disable -> op.pkg
+            is Op.EnableComponent -> op.component.pkg
+            is Op.DisableComponent -> op.component.pkg
             is Op.DefaultState -> op.pkg
             is Op.Uninstall -> op.pkg
             is Op.InstallExisting -> op.pkg
@@ -178,6 +180,8 @@ class RestoreCommands(private val renderer: OpRenderer) {
         fun describeChange(op: Op): String = when (op) {
             is Op.Disable -> "Switched off ${op.pkg.value}"
             is Op.Enable -> "Switched on ${op.pkg.value}"
+            is Op.DisableComponent -> "Switched off the launcher component ${op.component.flat}"
+            is Op.EnableComponent -> "Switched on the launcher component ${op.component.flat}"
             is Op.DefaultState -> "Reset ${op.pkg.value} to its default state"
             is Op.Install -> "Installed ${op.pkg.value}"
             is Op.InstallStream -> "Installed ${op.pkg.value}"
@@ -195,6 +199,8 @@ class RestoreCommands(private val renderer: OpRenderer) {
         fun describeInverse(op: Op): String = when (op) {
             is Op.Enable -> "Switch back on: ${op.pkg.value}"
             is Op.Disable -> "Switch off again: ${op.pkg.value}"
+            is Op.EnableComponent -> "Switch the launcher component back on: ${op.component.flat}"
+            is Op.DisableComponent -> "Switch the launcher component off again: ${op.component.flat}"
             is Op.DefaultState -> "Back to its default state: ${op.pkg.value}"
             is Op.Uninstall -> "Remove the app: ${op.pkg.value}"
             is Op.InstallExisting -> "Put the app back: ${op.pkg.value}"

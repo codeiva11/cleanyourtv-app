@@ -2,6 +2,7 @@ package tv.cleanyour.core.backup
 
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.ChangeRecord
+import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
@@ -46,6 +47,20 @@ class RestoreCommandsTest {
     }
 
     private fun lines(s: List<RestoreStep>, vararg kinds: RestoreStepKind) = s.filter { it.kind in kinds }.flatMap { it.lines }
+
+    // RFC-SHOP-2 (2026-11-12): a component disable is a lasting change, so the laptop restore
+    // script puts it back with the enable — the same lines the phone's Undo everything runs.
+    @Test fun aComponentDisableIsPutBackByItsEnable() {
+        val c = Component(PackageName("com.google.android.tvlauncher"),
+            "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")
+        val changes = listOf(ChangeRecord(PlanId("01PLAN"), 0, Op.DisableComponent(c), Prior(), 1000L))
+        val steps = RestoreCommands(renderer).steps(changes)
+        assertEquals(1, steps.size)
+        assertEquals(Op.EnableComponent(c), steps[0].inverse)
+        assertEquals(renderer.render(Op.EnableComponent(c)).lines.map { it.text }, steps[0].lines)
+        assertFalse(RestoreCommands.isTransient(Op.DisableComponent(c)))
+        assertEquals(UndoOrder.Phase.PACKAGES, UndoOrder.target(Op.DisableComponent(c))!!.phase)
+    }
 
     @Test fun phaseByPhaseFromTheEarliestRecordAndOnlyLastingChanges() {
         val ops = steps.map { it.inverse }

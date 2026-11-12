@@ -38,6 +38,8 @@ object OpJson {
         when (op) {
             is Op.Disable -> { put("v", "disable"); put("pkg", op.pkg.value) }
             is Op.Enable -> { put("v", "enable"); put("pkg", op.pkg.value) }
+            is Op.DisableComponent -> { put("v", "disable_component"); put("component", op.component.flat) }
+            is Op.EnableComponent -> { put("v", "enable_component"); put("component", op.component.flat) }
             is Op.DefaultState -> { put("v", "default_state"); put("pkg", op.pkg.value) }
             is Op.Install -> {
                 put("v", "install"); put("apk", path(op.apk)); put("sha256", op.sha256.hex); put("pkg", op.pkg.value)
@@ -93,6 +95,8 @@ object OpJson {
     fun decode(o: JsonObject): Op = when (val v = o.str("v")) {
         "disable" -> Op.Disable(pkg(o.str("pkg")))
         "enable" -> Op.Enable(pkg(o.str("pkg")))
+        "disable_component" -> Op.DisableComponent(component(o.str("component")))
+        "enable_component" -> Op.EnableComponent(component(o.str("component")))
         "default_state" -> Op.DefaultState(pkg(o.str("pkg")))
         "install" -> Op.Install(path(o.obj("apk")), Sha256(o.str("sha256")), pkg(o.str("pkg")), o.long("versionCode"), Sha256(o.str("signer")),
             o.arr("flags").map { InstallFlag.valueOf(it.jsonPrimitive.content) }.toSet())

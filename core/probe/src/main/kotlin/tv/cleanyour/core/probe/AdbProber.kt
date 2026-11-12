@@ -264,7 +264,9 @@ class AdbProber(
     // RFC-DEEP-1: three reads, each best-effort on its own — a section that fails (a transport
     // error, a dump the firmware will not print) yields nothing for that section, never a failed
     // scan. Only the suspects are dumped one by one, at most MAX_DEEP_SCAN_PACKAGES of them in
-    // name order, so a TV with hundreds of packages still scans in seconds.
+    // name order, so a TV with hundreds of packages still scans in seconds. RFC-SHOP-2: the
+    // per-suspect dump also carries the Services: and Activities: sections and the per-user
+    // disabled-components list, so the planner can read a launcher's ad components from it.
     override suspend fun deepScan(session: TvSession, suspects: Set<PackageName>): DeepScanResult {
         val found = LinkedHashMap<PackageName, DeepScanEvidence>()
         fun merge(pkg: PackageName, update: (DeepScanEvidence) -> DeepScanEvidence) {
@@ -288,12 +290,16 @@ class AdbProber(
             try {
                 val r = run(session, ProbeScripts.deepPackageDump(pkg), ProbeStage.LAUNCHER, 256 * 1024)
                 val dump = DeepScanParser.packageDump(lines(r.stdout))
-                if (dump.receivers.isNotEmpty() || dump.providers.isNotEmpty() || dump.signatureHex != null) {
+                if (dump.receivers.isNotEmpty() || dump.providers.isNotEmpty() || dump.signatureHex != null ||
+                    dump.services.isNotEmpty() || dump.activities.isNotEmpty() || dump.disabledComponents.isNotEmpty()) {
                     merge(pkg) {
                         it.copy(
                             bootReceivers = (it.bootReceivers + dump.receivers).distinct(),
                             providers = (it.providers + dump.providers).distinct(),
                             signatureHex = it.signatureHex ?: dump.signatureHex,
+                            services = (it.services + dump.services).distinct(),
+                            activities = (it.activities + dump.activities).distinct(),
+                            disabledComponents = (it.disabledComponents + dump.disabledComponents).distinct(),
                         )
                     }
                 }

@@ -68,6 +68,8 @@ object LogCodes {
     fun op(op: Op): String = when (op) {
         is Op.Disable -> "Disable ${op.pkg.value}"
         is Op.Enable -> "Enable ${op.pkg.value}"
+        is Op.DisableComponent -> "DisableComponent ${op.component.flat}"
+        is Op.EnableComponent -> "EnableComponent ${op.component.flat}"
         is Op.DefaultState -> "DefaultState ${op.pkg.value}"
         is Op.Install -> "Install ${op.pkg.value}"
         is Op.InstallStream -> "Install ${op.pkg.value}"

@@ -696,25 +696,27 @@ class SetupMachine(
         val name = existing?.nickname ?: doorTv?.friendlyName ?: doorTv?.model ?: facts.model
         val profile = (res as? ProfileResolution.Exact)?.profile
         val snap = snapshot
-        val resolvedPkg = snap?.home?.resolved?.pkg
-        // M4 (2026-11-12): the eligibility split. Only Clean Stock Home is gated on a stock
-        // Google launcher (tvlauncher or launcherx) — it has nothing to clean without one.
-        // autoDebloat and uninstallBloat are NOT: REA needs only the package list + RAM, so they
-        // default true on ANY TV. Propagation fills only what is unset: a stored choice is never
-        // recomputed — a false the person set in Customise stays false, and a true stays true.
-        // (Schema-1 records that the old gate forced false are healed once at decode time, in
+        // M4 (2026-11-12) + RFC-SHOP-2: the eligibility split. autoDebloat and uninstallBloat
+        // are NOT gated: REA needs only the package list + RAM, so they default true on ANY TV.
+        // Clean Stock Home is gated on the TV having a home the plan knows how to clean
+        // (ReaEngine.isCleanStockHomeEligible): a vendor launcher's Shop tab — the Skyworth
+        // SWTV's Coocaa one — is served by the vendor's own ad packages and ad components, not
+        // by Google's, so gating on a Google launcher left the draft false on that TV and the
+        // clean-up never ran. Fire OS and a person's launcher are out by construction.
+        // Propagation fills only what is unset: a stored choice is never recomputed — a false
+        // the person set in Customise stays false, and a true stays true. (Schema-1 and
+        // schema-2 records that the old gate forced false are healed once at decode time, in
         // TvJson, because that false was the gate's, never the person's.)
-        val isStockLauncher = (resolvedPkg != null && resolvedPkg in ReaEngine.STOCK_GOOGLE_LAUNCHERS) ||
-            (resolvedPkg == null && snap?.packages?.keys?.any { it in ReaEngine.STOCK_GOOGLE_LAUNCHERS } == true)
+        val isCleanStockEligible = snap?.let { ReaEngine.isCleanStockHomeEligible(it) } == true
         val existingWizard = existing?.wizard
         val baseDraft = if (existingWizard != null) {
             existingWizard.copy(
-                cleanStockHome = if (!existingWizard.cleanStockHome) false else isStockLauncher,
+                cleanStockHome = if (!existingWizard.cleanStockHome) false else isCleanStockEligible,
             )
         } else {
             WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
                 keepDebuggingOn = false, planId = null, updatedAtMs = now,
-                cleanStockHome = isStockLauncher,
+                cleanStockHome = isCleanStockEligible,
                 autoDebloat = true,
                 uninstallBloat = true)
         }
@@ -756,7 +758,12 @@ class SetupMachine(
         // RFC-DEEP-1: the deep scan runs on the same snapshot, before the plan is made, and its
         // result rides with the Setup request. A scan that cannot run yields null; the plan is
         // made from the static rules alone.
-        val deepScan = deps.runner.deepScan(s, ReaEngine.deepScanSuspects(snap))
+        // RFC-SHOP-2: the launcher packages are scanned too, first (ReaEngine
+        // .launcherScanPackages), so their Services:/Activities:/Providers: sections are in the
+        // deep scan and findLauncherAdComponents can read the launcher's ad components from it.
+        // The launchers go first in the suspect list: the scan cap is 40 and they would never
+        // be cut anyway, so the cap is a budget, not a boundary.
+        val deepScan = deps.runner.deepScan(s, ReaEngine.launcherScanPackages(snap) + ReaEngine.deepScanSuspects(snap))
         when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices, ramByPackage = ram, deepScan = deepScan), snap)) {
             is PlanResult.Ok -> {
                 setupPlan = r.plan

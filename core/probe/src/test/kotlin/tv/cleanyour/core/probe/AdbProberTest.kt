@@ -276,16 +276,29 @@ class AdbProberTest {
                 "Package [com.vendor.customizer] (1234):\n" +
                 "    Receivers:\n" +
                 "      com.vendor.customizer/.BootReceiver:\n" +
+                "    Services:\n" +
+                "      com.vendor.customizer/.AdService:\n" +
+                "    Activities:\n" +
+                "      com.vendor.customizer/.AdActivity:\n" +
                 "    Providers:\n" +
                 "      com.vendor.customizer.AdProvider:\n" +
                 "        authority=com.vendor.customizer.provider\n" +
                 "    signatures:\n" +
-                "      " + "aa".repeat(32) + "\n")
+                "      " + "aa".repeat(32) + "\n" +
+                "    User 0: ceDataInode=1 installed=true hidden=false suspended=false stopped=false notLaunched=false enabled=0 instant=false virtual=false\n" +
+                "      disabledComponents:\n" +
+                "      com.vendor.customizer/com.vendor.customizer.OldAdService\n" +
+                "      enabledComponents:\n" +
+                "      com.vendor.customizer/.AdService\n")
         val s = FakeTvSession(recording = rec)
         val scan = prober.deepScan(s, setOf(customizer, p("com.google.android.tvrecommendations")))
         val ev = scan.evidence.getValue(customizer)
         assertEquals(listOf(".BootReceiver"), ev.bootReceivers)
         assertEquals(listOf("com.vendor.customizer.AdProvider"), ev.providers)
+        // RFC-SHOP-2: the dump's Services:/Activities: sections and the already-off list merge too.
+        assertEquals(listOf(".AdService"), ev.services)
+        assertEquals(listOf(".AdActivity"), ev.activities)
+        assertEquals(listOf(Component(customizer, "com.vendor.customizer.OldAdService")), ev.disabledComponents)
         assertEquals(2, ev.jobs)
         assertEquals("aa".repeat(32), ev.signatureHex)
         assertTrue(ev.hasRevivalEvidence)

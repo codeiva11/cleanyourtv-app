@@ -13,6 +13,16 @@ data class DeepScanEvidence(
     val providers: List<String> = emptyList(),
     val jobs: Int = 0,
     val signatureHex: String? = null,
+    // RFC-SHOP-2: the dump's Services: and Activities: sections, and the components the
+    // per-user state already has switched off (the "User 0:" block's disabledComponents:
+    // list). The planner reads these only for the launcher packages: they are the pool its
+    // ad-component filter runs over, and the already-off list is what keeps Undo from
+    // switching on a component that was off before the plan. They are not revival evidence
+    // on their own — a service or activity without a boot receiver, a job or a provider
+    // cannot bring ads back by itself.
+    val services: List<String> = emptyList(),
+    val activities: List<String> = emptyList(),
+    val disabledComponents: List<Component> = emptyList(),
 ) {
     val hasRevivalEvidence: Boolean get() = bootReceivers.isNotEmpty() || providers.isNotEmpty() || jobs > 0
 }

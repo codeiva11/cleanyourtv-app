@@ -1,0 +1,11 @@
+# Switch off one ad component of the stock launcher; it was on
+op: DisableComponent component=com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity
+privilege: PROFILE_STEP
+timeout_ms: 30000
+stdout_cap: 65536
+line: 'pm' 'disable-user' '--user' '0' 'com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity'
+transfer: none
+verify: none
+prior: empty
+inverse: EnableComponent component=com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity
+inverse_line: 'pm' 'enable' '--user' '0' 'com.google.android.tvlauncher/com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity'
