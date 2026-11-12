@@ -69,7 +69,9 @@ class PlannerTest {
         assertEquals(17, p.summary.groups.first().off)
         // Leftover apps (2026-11-12): Netflix matches no rule, so the extraOff choice
         // lands it in the leftover list, not "Also switched off" — the op is unchanged.
-        assertEquals(listOf("Netflix").map { "com.netflix.ninja" }, p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.map { it.pkg.value })
+        // The list shows every unmatched system app (kept by default); only the selected
+        // one is off.
+        assertEquals(listOf("com.netflix.ninja"), p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.filter { it.off }.map { it.pkg.value })
         assertTrue(p.summary.groups.none { it.id == DefaultPlanner.GROUP_CUSTOM }, "nothing is left for the Custom list")
         assertEquals(p.disabledPackages.toSet(), p.summary.switchOffPackages.toSet())
         // No facts in the fixture and no label from the probe: the name is read from the package
@@ -798,13 +800,27 @@ class PlannerTest {
 
     @Test fun profileRowForAKeptShopPackageCarriesTheProbeDiagnosis() {
         val videos = PackageName("com.google.android.videos")
-        val group = tv.cleanyour.core.model.PackageGroup("x", "Extras", tv.cleanyour.core.model.GroupDefault.DISABLE, listOf(tv.cleanyour.core.model.PackageEntry(videos, null)))
-        val snap = smallSnapshot(mapOf(videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV")))
-        val p = plan(setup(profile = profile(extraGroups = listOf(group))), snapshot = snap)
-        val row = p.summary.groups.single { it.id == "x" }.rows.single()
+        // Videos is in the Mi TV debloat list, so its row lives in the mitv group — the
+        // group loop is where a profile-listed Shop package is kept as user-installed.
+        val snap = snapshot(extra = mapOf(videos to on.copy(system = false, versionCode = 0, label = "Google Play Movies & TV")))
+        val p = plan(setup(), snapshot = snap)
+        val row = p.summary.groups.single { it.id == "mitv" }.rows.single { it.pkg == videos }
         assertFalse(row.off)
         assertEquals(DefaultPlanner.REASON_USER_INSTALLED, row.whyProtected)
         assertTrue(row.description.contains("no dumpsys entry"), row.description)
+    }
+
+    // A PatchWall feed that must stay on is governed by PatchWall, never by the leftover
+    // list: it must not appear there at all, and a Custom choice for it is refused.
+    @Test fun patchWallFeedsNeverAppearInTheLeftoverList() {
+        val mitvPlus = PackageName("com.mitv.tvhome.mitvplus")
+        val p = plan(setup(), snapshot = snapshot())
+        assertTrue(p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.none { it.pkg == mitvPlus })
+        // When PatchWall goes off with it, the feed is listable and goes off with it.
+        val patchwall = PackageName("com.mitv.tvhome.atv")
+        val both = plan(setup(choices = choices(extraOff = setOf(patchwall, mitvPlus))), snapshot = snapshot())
+        assertTrue(both.summary.groups.flatMap { it.rows }.any { it.pkg == mitvPlus && it.off })
+        assertTrue(ops(both).contains(Op.Disable(mitvPlus)))
     }
 }
 

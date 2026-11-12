@@ -346,6 +346,12 @@ class DefaultPlanner(
                 .filter { pkg -> pkg !in covered && pkg !in matchedPkgs && pkg != homePkg }
                 .filter { pkg -> val st = state(pkg); st != null && st.system && (!isOff(pkg) || choices.uninstallBloat) }
                 .filter { pkg -> protectedReason(pkg, profile, stockLaunchers, packageGroups) == null }
+                // A PatchWall feed that must stay on (PatchWall stays on) is governed by
+                // PatchWall, never by this list: listing it would let one tap switch it off
+                // alone, the shape of #945, and it would steal the Custom list's refusal
+                // (REASON_PATCHWALL_FEED). It falls through to Custom, which refuses it.
+                // When PatchWall goes off, feedReason is null and the feed is listable.
+                .filter { pkg -> feedReason(pkg) == null }
                 .sortedWith(compareByDescending<PackageName> { req.ramByPackage[it] ?: 0 }.thenBy { it.value })
             val leftoverRows = mutableListOf<RowSummary>()
             for (pkg in leftoverPkgs) {
