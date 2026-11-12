@@ -1,12 +1,11 @@
 package tv.cleanyour.core.planner
 
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.GroupDefault
-import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageEntry
 import tv.cleanyour.core.model.PackageGroup
 import tv.cleanyour.core.model.PackageName
-import tv.cleanyour.core.model.SettingKey
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.ops.Denylist
 import tv.cleanyour.core.spec.FactsTable
@@ -83,8 +82,9 @@ object ReaEngine {
         "sysreport",
         "messageprovider",
         "tvpi",
-        "autoinstaller",
-        "mall"
+        "autoinstaller"
+        // NOTE (S9, 2026-11-12): "mall" was here and matched "small" too; com.coocaa.mall stays
+        // caught by its explicit entry in STOCK_AD_AND_SHOP_PACKAGES, so the substring is gone.
     )
 
     // Heuristic signatures for Telemetry & Analytics trackers
@@ -207,7 +207,10 @@ object ReaEngine {
         snapshot: Snapshot,
         factsTable: FactsTable,
         stockLaunchers: List<Component>,
-        ramByPackage: Map<PackageName, Int> = emptyMap()
+        ramByPackage: Map<PackageName, Int> = emptyMap(),
+        // RFC-DEEP-1: the deep scan's result, when Setup ran it. Its candidates join the static
+        // ones below; null means the scan could not run and the static rules decide alone.
+        deepScan: DeepScanResult? = null,
     ): List<Candidate> {
         val candidates = mutableListOf<Candidate>()
         val stockPkgs = stockLaunchers.map { it.pkg }.toSet()
@@ -227,11 +230,17 @@ object ReaEngine {
             if (snapshot.home.resolved?.pkg == pkg) continue
             if (snapshot.ime?.pkg == pkg || snapshot.screensaver.any { it.pkg == pkg }) continue
 
-            // 2. Facts Table Match
+            // 2. Facts Table Match. M1 (2026-11-12): "streaming" is NOT bloat — the facts table's
+            // 172 streaming entries (Netflix, YouTube, Prime Video, Disney+...) are apps the person
+            // watches. Nominating them would uninstall the person's own streaming apps on an
+            // unlisted TV. Only ads, telemetry, analytics, bloat and unwanted nominate here.
+            // S7: PatchWall (com.mitv.tvhome.atv) is excluded from automatic nomination too — the
+            // planner's PatchWall machinery owns that decision and the person may switch it off
+            // explicitly; REA must not uninstall a home screen on its own.
             val facts = factsTable.lookup(pkg)
-            if (facts != null) {
+            if (facts != null && pkg != PatchWallFeeds.PATCHWALL) {
                 val cat = facts.category.lowercase()
-                if (cat in setOf("ads", "telemetry", "analytics", "bloat", "unwanted", "streaming")) {
+                if (cat in setOf("ads", "telemetry", "analytics", "bloat", "unwanted")) {
                     candidates += Candidate(
                         pkg = pkg,
                         friendlyName = facts.friendlyName,
@@ -296,10 +305,84 @@ object ReaEngine {
             }
         }
 
+        // 5. Deep scan (RFC-DEEP-1): what the names cannot see. A suspect the scan caught with a
+        // boot receiver, a scheduled job or a content provider nominates even when no static rule
+        // above fired — that is the package that brings the Shop tab and sponsored banners back
+        // after a reboot.
+        if (deepScan != null) candidates += findDeepScanCandidates(deepScan, snapshot, stockLaunchers)
+
         // Heaviest first, so the worst RAM hogs sit at the top of their group; the name
         // breaks ties, so the order is stable when nothing is measured.
         return candidates.distinctBy { it.pkg }
             .sortedWith(compareByDescending<Candidate> { it.estimatedRamMb }.thenBy { it.pkg.value })
+    }
+
+    /**
+     * RFC-DEEP-1: the packages the deep scan dumps one by one. Name evidence only — the Shop/ad
+     * list, the ad and telemetry signatures, the vendor bloat prefixes — on system packages the
+     * denylist and the stock launchers do not protect. The scan itself then decides, from what the
+     * TV actually prints, which of these revive ads after a reboot.
+     */
+    fun deepScanSuspects(snapshot: Snapshot): Set<PackageName> {
+        val suspects = LinkedHashSet<PackageName>()
+        for (pkg in snapshot.packages.keys) {
+            val state = snapshot.packages[pkg] ?: continue
+            if (!state.system) continue
+            if (pkg in STOCK_GOOGLE_LAUNCHERS) continue
+            if (Denylist.staticReason(pkg.value) != null) continue
+            val pkgStr = pkg.value.lowercase()
+            if (pkg in STOCK_AD_AND_SHOP_PACKAGES ||
+                ADS_SIGNATURES.any { pkgStr.contains(it) } ||
+                TELEMETRY_SIGNATURES.any { pkgStr.contains(it) } ||
+                VENDOR_BLOAT_PREFIXES.any { pkgStr.startsWith(it) }) {
+                suspects += pkg
+            }
+        }
+        return suspects
+    }
+
+    /**
+     * RFC-DEEP-1: evidence-based nomination from a deep scan. A package nominates ONLY when the
+     * scan shows it can revive ads: a BOOT_COMPLETED receiver (it wakes when the TV starts), a
+     * scheduled JobScheduler job (it re-fetches ads and Shop config in the background), or a
+     * content provider feeding the launcher. The same safety order as the static rules applies
+     * first: system apps only, denylist, the resolved home, the keyboard and the screensaver are
+     * never nominated — so the stock launcher itself, which has all three kinds of evidence,
+     * never appears here. A partnercustomizer that only injects sponsored rows nominates; one the
+     * denylist protects (an input-critical package such as com.tcl.dashboard) never does.
+     */
+    fun findDeepScanCandidates(
+        scan: DeepScanResult,
+        snapshot: Snapshot,
+        stockLaunchers: List<Component>,
+    ): List<Candidate> {
+        val stockPkgs = stockLaunchers.map { it.pkg }.toSet()
+        val protectedPkgs = STOCK_GOOGLE_LAUNCHERS + stockPkgs
+        val out = mutableListOf<Candidate>()
+        for ((pkg, evidence) in scan.evidence) {
+            val state = snapshot.packages[pkg] ?: continue
+            if (!state.system) continue
+            if (pkg in protectedPkgs) continue
+            // S7: PatchWall is excluded from automatic nomination — see rule 2 above.
+            if (pkg == PatchWallFeeds.PATCHWALL) continue
+            if (Denylist.staticReason(pkg.value) != null) continue
+            if (snapshot.home.resolved?.pkg == pkg) continue
+            if (snapshot.ime?.pkg == pkg || snapshot.screensaver.any { it.pkg == pkg }) continue
+            if (!evidence.hasRevivalEvidence) continue
+            val reasons = buildList {
+                if (evidence.bootReceivers.isNotEmpty()) add("wakes at boot (${evidence.bootReceivers.size} receiver${if (evidence.bootReceivers.size == 1) "" else "s"})")
+                if (evidence.jobs > 0) add("${evidence.jobs} scheduled job${if (evidence.jobs == 1) "" else "s"}")
+                if (evidence.providers.isNotEmpty()) add("content provider (${evidence.providers.size})")
+            }
+            out += Candidate(
+                pkg = pkg,
+                friendlyName = formatName(pkg.value),
+                description = "Deep scan: ${reasons.joinToString(", ")} — brings ads back after reboot",
+                category = "ads",
+                estimatedRamMb = 35,
+            )
+        }
+        return out
     }
 
     /**
@@ -376,53 +459,10 @@ object ReaEngine {
         }
     }
 
-    /**
-     * Builds the exact operations for Option A: Clean Stock Home.
-     * Permanently uninstalls all ad providers and Google Play Movies & TV (the Shop tab provider),
-     * blocks every known ad/shop setting so the Shop tab, Discover row and sponsored content
-     * cannot return after the TV restarts, and restarts the launcher with a cleared cache.
-     *
-     * RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct provider of the
-     * "Shop" tab in com.google.android.tvlauncher and com.google.android.apps.tv.launcherx.
-     * Unless it is uninstalled via pm uninstall -k --user 0, the stock launcher queries it
-     * on restart/reboot and brings the Shop tab right back!
-     */
-    fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
-        val ops = mutableListOf<Op>()
-
-        // 1. Permanently remove all ad providers and the Shop tab provider (com.google.android.videos).
-        //    pm uninstall -k --user 0 uninstalls them for user 0; pm install-existing brings them back on 1-tap Undo.
-        for (pkg in STOCK_AD_AND_SHOP_PACKAGES) {
-            if (pkg in snapshot.packages || pkg == STOCK_TV_RECOMMENDATIONS || pkg == GOOGLE_PLAY_MOVIES) {
-                ops += Op.Uninstall(pkg)
-                ops += Op.ClearPackage(pkg)
-            }
-        }
-
-        // 2. Clear pending ad notifications
-        ops += Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications")
-
-        // 3. Block every known ad/shop setting so the Shop tab and sponsored content stay gone
-        ops += Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0")
-        ops += Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1")
-        ops += Op.SettingsPut(SettingKey.PERSONALIZED_ADS, "0")
-        ops += Op.SettingsPut(SettingKey.DISCOVER_ENABLED, "0")
-        ops += Op.SettingsPut(SettingKey.SPONSORED_CONTENT, "0")
-        // Speed up TV animations
-        ops += Op.SettingsPut(SettingKey.WINDOW_ANIMATION_SCALE, "0")
-        ops += Op.SettingsPut(SettingKey.TRANSITION_ANIMATION_SCALE, "0")
-        ops += Op.SettingsPut(SettingKey.ANIMATOR_DURATION_SCALE, "0")
-
-        // 4. CRITICAL: Clear launcher's cached ads and Shop/Discover tabs from its SQLite database,
-        //    then restart it so the clean layout takes effect immediately.
-        if (isStockGoogleTvLauncher(snapshot)) {
-            val stock = resolveStockLauncherComponent(snapshot)
-            ops += Op.ClearPackage(stock.pkg)
-            ops += Op.RestartHome(stock)
-        }
-
-        return ops
-    }
+    // S8 (2026-11-12): buildCleanStockHomeOps lived here as dead code — no live caller, only
+    // tests and the README named it. The live Clean Stock Home is DefaultPlanner.cleanStockHome,
+    // which is also where the step order (content delete before uninstall) is enforced. Deleted;
+    // the README now points at DefaultPlanner instead.
 
     // RFC-RAM-1: measured RSS (KB) beats the name-guess; a package that is not running
     // (absent from the map) keeps the guess. RSS counts shared pages per process, so the

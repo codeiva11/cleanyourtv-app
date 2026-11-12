@@ -6,6 +6,8 @@ import tv.cleanyour.core.model.AdbError
 import tv.cleanyour.core.model.AdbException
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanEvidence
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.DeviceFacts
 import tv.cleanyour.core.model.EnabledState
 import tv.cleanyour.core.model.HdmiSource
@@ -259,6 +261,48 @@ class AdbProber(
         return out.mapValues { (_, kb) -> kb.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt() }
     }
 
+    // RFC-DEEP-1: three reads, each best-effort on its own — a section that fails (a transport
+    // error, a dump the firmware will not print) yields nothing for that section, never a failed
+    // scan. Only the suspects are dumped one by one, at most MAX_DEEP_SCAN_PACKAGES of them in
+    // name order, so a TV with hundreds of packages still scans in seconds.
+    override suspend fun deepScan(session: TvSession, suspects: Set<PackageName>): DeepScanResult {
+        val found = LinkedHashMap<PackageName, DeepScanEvidence>()
+        fun merge(pkg: PackageName, update: (DeepScanEvidence) -> DeepScanEvidence) {
+            found[pkg] = update(found[pkg] ?: DeepScanEvidence())
+        }
+        try {
+            val r = run(session, ProbeScripts.DEEP_BOOT_RECEIVERS, ProbeStage.LAUNCHER, 256 * 1024)
+            for ((pkg, receivers) in DeepScanParser.bootReceivers(lines(r.stdout))) {
+                merge(pkg) { it.copy(bootReceivers = (it.bootReceivers + receivers).distinct()) }
+            }
+        } catch (_: Exception) {
+        }
+        try {
+            val r = run(session, ProbeScripts.DEEP_JOBS, ProbeStage.LAUNCHER, 1024 * 1024)
+            for ((pkg, count) in DeepScanParser.jobs(lines(r.stdout))) {
+                merge(pkg) { it.copy(jobs = it.jobs + count) }
+            }
+        } catch (_: Exception) {
+        }
+        for (pkg in suspects.sortedBy { it.value }.take(MAX_DEEP_SCAN_PACKAGES)) {
+            try {
+                val r = run(session, ProbeScripts.deepPackageDump(pkg), ProbeStage.LAUNCHER, 256 * 1024)
+                val dump = DeepScanParser.packageDump(lines(r.stdout))
+                if (dump.receivers.isNotEmpty() || dump.providers.isNotEmpty() || dump.signatureHex != null) {
+                    merge(pkg) {
+                        it.copy(
+                            bootReceivers = (it.bootReceivers + dump.receivers).distinct(),
+                            providers = (it.providers + dump.providers).distinct(),
+                            signatureHex = it.signatureHex ?: dump.signatureHex,
+                        )
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return DeepScanResult(clock.nowMs(), found)
+    }
+
     override suspend fun freeDataMb(session: TvSession): Int {
         val r = run(session, ProbeScripts.FREE_DATA, ProbeStage.FACTS, 16 * 1024)
         val row = lines(r.stdout).map { it.trim().split(Regex("\\s+")) }.lastOrNull { it.size >= 6 && it.last() == "/data" }
@@ -327,6 +371,8 @@ class AdbProber(
         const val OVERLAY_CAP = 256L * 1024
         const val SCREENSHOT_CAP = ShellRenderer.MAX_PNG_BYTES
         const val SIGNER_APK_CAP = 16L * 1024 * 1024
+        // RFC-DEEP-1: at most this many per-package dumps per scan, in name order.
+        const val MAX_DEEP_SCAN_PACKAGES = 40
         private val random = java.security.SecureRandom()
         val SIGNED_PACKAGES: Set<PackageName> = setOf(PackageName("com.gathin.tvhome"), PackageName("tv.cleanyour.curtain"))
         private val ZERO = Sha256("0".repeat(64))

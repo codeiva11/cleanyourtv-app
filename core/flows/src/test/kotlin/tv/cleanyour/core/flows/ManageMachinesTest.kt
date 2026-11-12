@@ -508,6 +508,25 @@ class ManageMachinesTest {
         assertEquals("0000 0000 0000", keyDigest12(Samples.zeroHash))
     }
 
+    // M4 (2026-11-12): a schema-1 record with autoDebloat/uninstallBloat false was written by
+    // the old eligibility gate, not by the person — decoding heals them to true once.
+    // cleanStockHome is never healed (false is correct on a TV with no stock launcher), and a
+    // schema-2 record keeps an explicit false, because that false was set after the fix.
+    @Test fun tvJsonHealsTheOldGateValuesOnce() {
+        val gated = Samples.tv().copy(wizard = WizardDraft(3, Level.CUSTOM, setOf(adPkg), setOf(promoPkg), true, PlanId("p1"), 5,
+            cleanStockHome = false, autoDebloat = false, uninstallBloat = false))
+        // Encode writes schema 2; rewrite the marker to 1 to replay a record from before the fix.
+        val oldBytes = TvJson.encode(gated).decodeToString().replace("\"schema\":2", "\"schema\":1").encodeToByteArray()
+        val healed = TvJson.decode(oldBytes)
+        assertEquals(false, healed.wizard!!.cleanStockHome)
+        assertEquals(true, healed.wizard!!.autoDebloat)
+        assertEquals(true, healed.wizard!!.uninstallBloat)
+        // The same values in a schema-2 record are a real choice: they stay false.
+        val kept = TvJson.decode(TvJson.encode(gated))
+        assertEquals(false, kept.wizard!!.autoDebloat)
+        assertEquals(false, kept.wizard!!.uninstallBloat)
+    }
+
     @Test fun operationNoticesFollowTheRun() {
         val plan = Harness().plan(listOf(Op.Disable(adPkg)), takeover = true)
         val running = tv.cleanyour.core.engine.RunState.Running(plan, 1, emptyList(), 58, null)

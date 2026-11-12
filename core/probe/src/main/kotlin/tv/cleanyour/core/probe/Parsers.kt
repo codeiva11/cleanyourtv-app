@@ -248,3 +248,71 @@ object ResumedActivityParser {
         return best?.let { component(it.second.removeSuffix("}")) }
     }
 }
+
+// RFC-DEEP-1: the deep scan's three reads. Every parser here is best-effort: a firmware that
+// prints a section in another shape yields nothing for it, never an exception — the scan must
+// not fail Setup for a dump it cannot read. Long lines are dropped, never evaluated.
+object DeepScanParser {
+    data class PackageDumpInfo(val receivers: List<String> = emptyList(), val providers: List<String> = emptyList(), val signatureHex: String? = null)
+
+    private val JOB = Regex("^JOB #u0a[0-9]+/[0-9]+:\\s+[0-9a-f]+\\s+([A-Za-z][A-Za-z0-9_.]{0,254})/")
+    private val SIGNATURE_HEX = Regex("[0-9a-f]{64}")
+
+    // `cmd package query-receivers --brief` prints one component per line, like query-activities.
+    fun bootReceivers(lines: Sequence<String>): Map<PackageName, List<String>> {
+        val out = LinkedHashMap<PackageName, MutableList<String>>()
+        for (raw in skipLong(lines)) {
+            val t = raw.trim()
+            if ('/' !in t || ' ' in t) continue
+            val c = component(t) ?: continue
+            out.getOrPut(c.pkg) { mutableListOf() }.let { if (c.cls !in it) it += c.cls }
+        }
+        return out
+    }
+
+    // `dumpsys jobscheduler`: one "JOB #u0a<uid>/<id>: <hex> <pkg>/<service>" line per job.
+    fun jobs(lines: Sequence<String>): Map<PackageName, Int> {
+        val out = LinkedHashMap<PackageName, Int>()
+        for (raw in skipLong(lines)) {
+            val pkg = JOB.find(raw.trim())?.groupValues?.get(1)?.let(::packageName) ?: continue
+            out[pkg] = (out[pkg] ?: 0) + 1
+        }
+        return out
+    }
+
+    // `dumpsys package <pkg>`: the "Receivers:" / "Providers:" sections list one component per
+    // line (trailing colon, filter details after a space); the "signatures:" block carries the
+    // signing certificate's 64-hex digest on the lines that follow it.
+    fun packageDump(lines: Sequence<String>): PackageDumpInfo {
+        val receivers = mutableListOf<String>()
+        val providers = mutableListOf<String>()
+        var signatureHex: String? = null
+        var section: String? = null
+        var afterSignatures = 0
+        for (raw in skipLong(lines)) {
+            val t = raw.trim()
+            when (t) {
+                "Receivers:", "Providers:", "Services:", "Activities:" -> { section = t.removeSuffix(":"); afterSignatures = 0; continue }
+                "signatures:" -> { section = null; afterSignatures = 5; continue }
+            }
+            if (afterSignatures > 0) {
+                afterSignatures--
+                SIGNATURE_HEX.find(t)?.value?.let { signatureHex = it }
+                if (signatureHex != null) afterSignatures = 0
+                continue
+            }
+            if (section != "Receivers" && section != "Providers") continue
+            val first = t.removeSuffix(":").substringBefore(' ')
+            // A component (pkg/.Cls) or a fully-qualified class name (the provider's own
+            // name, e.g. com.vendor.customizer.AdProvider). Lines with '=' are detail lines
+            // under an item (authority=..., grantUriPermissions=...), never items themselves.
+            val cls = if ('/' in first) component(first)?.cls
+                else if ('=' !in first && first.count { it == '.' } >= 2) first
+                else null
+            if (cls == null) continue
+            val list = if (section == "Receivers") receivers else providers
+            if (cls !in list) list += cls
+        }
+        return PackageDumpInfo(receivers, providers, signatureHex)
+    }
+}

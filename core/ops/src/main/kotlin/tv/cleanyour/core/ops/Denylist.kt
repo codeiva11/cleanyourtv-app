@@ -72,6 +72,15 @@ object Denylist {
         // buttons; on the 22AE the custom (Daily) button needs it.
         "com.smartdevice.global.service" to "it runs the remote's hot keys on this TV",
         "com.smartdevice.dailyshortcut" to "it runs the remote's quick menu and extra buttons on this TV",
+        // RFC-S7-1 (2026-11-12, fork): ads-category packages the TV still needs. The facts table
+        // lists them as ads, so REA rule 2 would nominate them — but switching them off breaks
+        // the TV itself. Partnercustomizers that only inject sponsored rows and the Shop tab are
+        // NOT protected here; the deep scan nominates those on evidence instead. PatchWall
+        // (com.mitv.tvhome.atv) is deliberately NOT here: the planner's PatchWall machinery and
+        // its tests require it to stay switch-off-able by explicit choice — REA rule 2 and the
+        // deep scan exclude it instead (see ReaEngine).
+        "com.tcl.dashboard" to "it is the TCL home panel; newer TCL Google TVs need it for inputs",
+        "com.tcl.dashboard.service" to "it is the TCL dashboard service, needed by the system",
     ) + vendorSetupWizards.associateWith { REASON_VENDOR_WIZARD } + vendorHomes.associateWith { REASON_VENDOR_HOME }
 
     val prefixes: Map<String, String> = linkedMapOf(

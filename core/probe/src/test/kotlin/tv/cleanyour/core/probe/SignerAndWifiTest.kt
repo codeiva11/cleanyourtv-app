@@ -48,6 +48,20 @@ class SignerAndWifiTest {
         }
     }
 
+    // Task 6 (2026-11-12): the custom launcher APK is gone from the app, but these tests are
+    // ApkSigners unit tests and their mock data is the two APKSigningBlock fixtures committed
+    // in android/platform/signatures. Every test above returns early when its fixture is
+    // missing, so this one fails loudly instead: if the mock data goes, the suite must say so
+    // rather than silently testing nothing. The curtain's block is asserted too — the curtain
+    // APK project itself is gone, but its signing block is still the second mock.
+    @Test fun signerFixturesArePresent() {
+        for (dir in listOf("cleanyourtv-launcher", "cleanyourtv-curtain")) {
+            val block = File(Fixtures.repoRoot, "android/platform/signatures/$dir/APKSigningBlock")
+            assertTrue(block.exists(), "missing mock data: $block")
+            assertTrue(block.length() > 0, "empty mock data: $block")
+        }
+    }
+
     // RF-LAUNCHER-240 F2: Android 8 ignores a v3 block, and the APK Signing Block is not covered by
     // v2's signature, so a v3 block alone, or one naming another certificate than v2, could carry K1
     // into an APK signed with any key. Only a certificate the TV verified counts: v2 required, v3

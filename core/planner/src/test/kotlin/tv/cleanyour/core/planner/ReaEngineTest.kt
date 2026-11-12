@@ -1,11 +1,13 @@
 package tv.cleanyour.core.planner
 
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanEvidence
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.EnabledState
-import tv.cleanyour.core.model.Op
+import tv.cleanyour.core.model.HomeClaimant
+import tv.cleanyour.core.model.HomeResolution
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.PackageState
-import tv.cleanyour.core.model.SettingKey
 import tv.cleanyour.core.spec.FactsTable
 import tv.cleanyour.core.spec.PackageFacts
 import tv.cleanyour.testing.fixtures.Samples
@@ -31,6 +33,7 @@ class ReaEngineTest {
         override fun lookup(pkg: PackageName): PackageFacts? = when (pkg.value) {
             "com.google.android.tvrecommendations" -> PackageFacts("TV Recommendations", "Adverts and recommendations", "ads")
             "com.xiaomi.mitv.analytic" -> PackageFacts("Xiaomi Analytics", "Usage and analytics tracker", "telemetry")
+            "com.example.streamer" -> PackageFacts("Streamer", "A streaming app the person watches", "streaming")
             else -> null
         }
     }
@@ -75,42 +78,103 @@ class ReaEngineTest {
         assertEquals("rea_telemetry", groups[1].id)
     }
 
+    // S8 (2026-11-12): buildCleanStockHomeOps is deleted — the live Clean Stock Home is
+    // DefaultPlanner.cleanStockHome. What those two tests pinned (the stock launcher's correct
+    // activity per launcher) is pinned here instead, on resolveStockLauncherComponent.
     @Test
-    fun buildsCleanStockHomeOps() {
+    fun resolvesTheRightMainActivityPerStockLauncher() {
+        val launcherx = PackageName("com.google.android.apps.tv.launcherx")
+        val tvlauncher = PackageName("com.google.android.tvlauncher")
+        val snapX = Samples.snapshot(
+            packages = mapOf(launcherx to state(), PackageName("com.google.android.tvrecommendations") to state()),
+            home = HomeResolution(Component(launcherx, ".home.HomeActivity"), listOf(HomeClaimant(Component(launcherx, ".home.HomeActivity"), 2))),
+        )
+        assertTrue(ReaEngine.isStockGoogleTvLauncher(snapX))
+        assertEquals(Component(launcherx, ".home.HomeActivity"), ReaEngine.resolveStockLauncherComponent(snapX))
+        val snapTv = Samples.snapshot(
+            packages = mapOf(tvlauncher to state(), PackageName("com.google.android.tvrecommendations") to state()),
+            home = HomeResolution(Component(tvlauncher, ".MainActivity"), listOf(HomeClaimant(Component(tvlauncher, ".MainActivity"), 2))),
+        )
+        assertTrue(ReaEngine.isStockGoogleTvLauncher(snapTv))
+        assertEquals(Component(tvlauncher, ".MainActivity"), ReaEngine.resolveStockLauncherComponent(snapTv))
+    }
+
+    // M1 (2026-11-12): a "streaming" facts entry is an app the person watches, not bloat.
+    // It must never nominate, even on an unlisted TV with no profile.
+    @Test
+    fun doesNotNominateStreamingApps() {
+        val streamer = PackageName("com.example.streamer")
         val packages = mapOf(
-            PackageName("com.google.android.tvlauncher") to state(),
+            streamer to state(),
             PackageName("com.google.android.tvrecommendations") to state(),
-            PackageName("com.google.android.videos") to state()
         )
         val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
 
-        val ops = ReaEngine.buildCleanStockHomeOps(snap)
-        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.tvrecommendations") })
-        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.videos") })
-        assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvrecommendations") })
-        assertTrue(ops.any { it is Op.DeleteContent })
-        assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.FREEPLAY_ENABLED && it.value == "0" })
-        assertTrue(ops.any { it is Op.SettingsPut && it.key == SettingKey.LIMIT_AD_TRACKING && it.value == "1" })
-        assertTrue(ops.any { it is Op.ClearPackage && it.pkg == PackageName("com.google.android.tvlauncher") })
-        assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == PackageName("com.google.android.tvlauncher") && it.component.cls == ".MainActivity" })
+        val candidates = ReaEngine.findDebloatCandidates(snap, fakeFacts, stockLaunchers)
+        val candidateNames = candidates.map { it.pkg.value }
+        assertFalse("com.example.streamer" in candidateNames)
+        assertTrue("com.google.android.tvrecommendations" in candidateNames)
+    }
+
+    // RFC-DEEP-1: a suspect the scan caught waking at boot and keeping scheduled jobs nominates,
+    // with the evidence in its description.
+    @Test
+    fun deepScanNominatesPackagesWithBootReceiversAndJobs() {
+        val customizer = PackageName("com.vendor.customizer")
+        val packages = mapOf(
+            customizer to state(),
+            PackageName("com.google.android.tvlauncher") to state(),
+        )
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+        val scan = DeepScanResult(1, mapOf(
+            customizer to DeepScanEvidence(bootReceivers = listOf(".BootReceiver"), jobs = 2),
+        ))
+
+        val candidates = ReaEngine.findDeepScanCandidates(scan, snap, stockLaunchers)
+        assertEquals(1, candidates.size)
+        assertEquals("ads", candidates[0].category)
+        assertTrue("wakes at boot" in candidates[0].description, candidates[0].description)
+        assertTrue("2 scheduled jobs" in candidates[0].description, candidates[0].description)
     }
 
     @Test
-    fun buildsCleanStockHomeOpsForGoogleTvLauncherX() {
-        val launcherx = PackageName("com.google.android.apps.tv.launcherx")
+    fun deepScanDoesNotNominateWithoutEvidenceOrWhenProtected() {
+        val quiet = PackageName("com.vendor.quiet")
+        val launcher = PackageName("com.google.android.tvlauncher")
+        val packages = mapOf(quiet to state(), launcher to state(), PackageName("com.android.vending") to state())
+        val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(launcher, ".MainActivity"))
+        val scan = DeepScanResult(1, mapOf(
+            // No boot receiver, no job, no provider: a name alone is not evidence.
+            quiet to DeepScanEvidence(),
+            // The stock launcher has all three kinds of evidence and still never nominates.
+            launcher to DeepScanEvidence(bootReceivers = listOf(".BootReceiver"), providers = listOf("HomeProvider"), jobs = 3),
+            // The Play Store is denylisted: evidence or not, it is never a candidate.
+            PackageName("com.android.vending") to DeepScanEvidence(bootReceivers = listOf(".BootReceiver"), jobs = 1),
+        ))
+
+        assertTrue(ReaEngine.findDeepScanCandidates(scan, snap, stockLaunchers).isEmpty())
+    }
+
+    @Test
+    fun deepScanCandidatesJoinTheStaticOnes() {
+        val customizer = PackageName("com.vendor.customizer")
         val packages = mapOf(
-            launcherx to state(),
+            customizer to state(),
             PackageName("com.google.android.tvrecommendations") to state(),
-            PackageName("com.google.android.videos") to state()
         )
         val snap = Samples.snapshot(packages = packages)
+        val stockLaunchers = listOf(Component(PackageName("com.google.android.tvlauncher"), ".MainActivity"))
+        val scan = DeepScanResult(1, mapOf(
+            customizer to DeepScanEvidence(providers = listOf("AdProvider")),
+        ))
 
-        assertTrue(ReaEngine.isStockGoogleTvLauncher(snap))
-        val ops = ReaEngine.buildCleanStockHomeOps(snap)
-        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.tvrecommendations") })
-        assertTrue(ops.any { it is Op.Uninstall && it.pkg == PackageName("com.google.android.videos") })
-        assertTrue(ops.any { it is Op.ClearPackage && it.pkg == launcherx })
-        assertTrue(ops.any { it is Op.RestartHome && it.component.pkg == launcherx && it.component.cls == ".home.HomeActivity" })
+        val candidates = ReaEngine.findDebloatCandidates(snap, fakeFacts, stockLaunchers, deepScan = scan)
+        val candidateNames = candidates.map { it.pkg.value }
+        assertTrue("com.vendor.customizer" in candidateNames)
+        assertTrue("com.google.android.tvrecommendations" in candidateNames)
     }
 
     // 2026-11-10: a Skyworth SWTV with no profile and no Google launcher showed

@@ -47,10 +47,12 @@ Unlike earlier versions that replaced your home screen with a custom launcher (`
 The **REA Engine** ([`core/planner/src/main/kotlin/tv/cleanyour/core/planner/ReaEngine.kt`](core/planner/src/main/kotlin/tv/cleanyour/core/planner/ReaEngine.kt)) inspects any TV dynamically at runtime without requiring an AI agent or prior database entry:
 
 1. **Clean Stock Home (Option A):**
-   - Automatically disables `com.google.android.tvrecommendations` (the central Ad Signals provider).
-   - Sets secure setting `freeplay_enabled = 0` (kills auto-playing video trailer ads).
-   - Sets secure setting `limit_ad_tracking = 1` (blocks background ad tracking).
-   - Restarts `com.google.android.tvlauncher/.MainActivity` so sponsored rows and Shop/Discover tabs vanish.
+   - Deletes pending ad notifications first, while the provider is still on the TV (`content delete` on the tvrecommendations notification provider).
+   - Permanently uninstalls the Shop tab and ad providers with `pm uninstall -k --user 0` — `com.google.android.tvrecommendations`, `com.google.android.videos` (Google Play Movies & TV, the Shop tab provider), Play Games, YouTube Music TV, the Discover row, and the vendor customizer packages (Skyworth/Coocaa, Mstar, TCL, Xiaomi and others). Uninstalled system apps come back with 1-tap Undo via `pm install-existing`.
+   - Sets secure settings `freeplay_enabled = 0` (kills auto-playing video trailer ads), `limit_ad_tracking = 1` (blocks background ad tracking), `personalized_ads = 0`, `discover_enabled = 0` and `sponsored_content_enabled = 0`, so the Shop tab and sponsored rows cannot come back after a restart.
+   - Force-stops the stock launcher, clears its cached ads and data (`pm clear`), and restarts its main activity — `com.google.android.tvlauncher/.MainActivity` on Android TV, `com.google.android.apps.tv.launcherx/.home.HomeActivity` on Google TV — so only Search, Home and Apps stay on top and no sponsored banner returns below.
+   - Turns the window, transition and animator scales to 0, so the TV feels faster.
+   - Google Play Store and external storage are always kept installed and enabled before any of this starts.
 2. **Dynamic Heuristic Bloat Detection:**
    - **Ads & Promotions:** Scans package names matching `recommendation`, `adssignals`, `promos`, `autoinstalls`, `.ads.`, `adservice`, `sponsor`.
    - **Telemetry & Trackers:** Scans package names matching `analytic`, `telemetry`, `tracking`, `metrics`, `diagnosing`, `crashlog`.
@@ -58,7 +60,7 @@ The **REA Engine** ([`core/planner/src/main/kotlin/tv/cleanyour/core/planner/Rea
 3. **RAM Profiler Ranking:**
    - Measures real per-process RSS RAM usage via `ps -A -o RSS,ARGS` and ranks the heaviest background hogs to the top.
 4. **Permanent Bloatware Uninstall with Instant Undo:**
-   - Performs `pm uninstall --user 0 <package>` for system apps, reclaiming device memory.
+   - Performs `pm uninstall -k --user 0 <package>` for system apps, reclaiming device memory.
    - All uninstalled system apps can be restored instantly with 1-tap Undo via `pm install-existing --user 0 <package>`.
 
 ---
@@ -88,16 +90,14 @@ private val VENDOR_BLOAT_PREFIXES = listOf(
 ```
 
 ### 2. Modifying Stock Launcher Cleaning Operations
-In `ReaEngine.kt` under `buildCleanStockHomeOps()`:
+The live Clean Stock Home is `DefaultPlanner.cleanStockHome()` in [`core/planner/src/main/kotlin/tv/cleanyour/core/planner/DefaultPlanner.kt`](core/planner/src/main/kotlin/tv/cleanyour/core/planner/DefaultPlanner.kt) — that is where the step order lives (Play Store kept safe, ad notifications deleted *before* the uninstalls, settings blocked, launcher cleared and restarted). The Shop/ad package list itself is `ReaEngine.STOCK_AD_AND_SHOP_PACKAGES` in [`ReaEngine.kt`](core/planner/src/main/kotlin/tv/cleanyour/core/planner/ReaEngine.kt):
 ```kotlin
-fun buildCleanStockHomeOps(snapshot: Snapshot): List<Op> {
-    val ops = mutableListOf<Op>()
-    // Add custom settings or package operations:
-    ops += Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0")
-    ops += Op.SettingsPut(SettingKey.LIMIT_AD_TRACKING, "1")
+// Add a package to the permanent uninstall list:
+val STOCK_AD_AND_SHOP_PACKAGES = listOf(
+    PackageName("com.google.android.tvrecommendations"),
+    PackageName("com.google.android.videos"),
     // ...
-    return ops
-}
+)
 ```
 
 ### 3. Testing Your Changes Locally
@@ -115,10 +115,11 @@ git submodule update --init --recursive
 ## 🛠️ Local Android SDK & Submodule Setup
 
 To build Android APKs (`assembleFullDebug` or `assembleFullRelease`), make sure you have:
-1. Submodules checked out:
+1. Submodules checked out — the repo carries one submodule, `third_party/cleanyourtv` (the upstream launcher source). The `:core:spec` unit tests read it, so a build without it fails those tests:
    ```bash
    git submodule update --init --recursive
    ```
+   (CI checks it out with `submodules: true`, so the release workflow always has it.)
 2. Android SDK configured in `local.properties`:
    ```properties
    sdk.dir=C\:\\Users\\YourUser\\AppData\\Local\\Android\\Sdk

@@ -306,7 +306,9 @@ internal fun ColumnScope.CustomiseContent(
     SheetHeader(
         stringResource(R.string.customise_title),
         trailing = rememberEmphasis(msg(R.string.customise_live, "total" to total, "off" to off), "$off"),
-        subtitle = stringResource(R.string.customise_nothing_deleted),
+        // M3: the subtitle must stay true. With permanent uninstall on, "Nothing is deleted"
+        // is false — the plan uninstalls system apps for user 0 (Undo puts them back).
+        subtitle = stringResource(if (extras.draft?.uninstallBloat == true) R.string.customise_uninstalls_apps else R.string.customise_nothing_deleted),
     )
     // "We keep these" holds the protected rows that stay on.
     val protectedRows = summary.groups.flatMap { g -> g.rows.filter { it.kept() } }

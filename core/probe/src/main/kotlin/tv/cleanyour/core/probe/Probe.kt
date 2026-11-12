@@ -37,6 +37,13 @@ interface Prober {
      * Best-effort: a firmware without the RSS column yields an empty map.
      */
     suspend fun ramByPackage(session: TvSession): Map<PackageName, Int>
+    /**
+     * RFC-DEEP-1: the REA deep scan for the suspect packages: who wakes at boot, who keeps
+     * scheduled jobs, who exposes content providers, and what certificate signed each one.
+     * Best-effort: a section a firmware cannot answer comes back empty, and a suspect whose dump
+     * cannot be read is simply absent from the result — the scan never fails Setup.
+     */
+    suspend fun deepScan(session: TvSession, suspects: Set<PackageName>): DeepScanResult
     /** Whether the TV's firmware refuses app installs (some OEMs lock this down). */
     suspend fun installRefusal(session: TvSession, noopApk: BlobRef): Boolean
     /** Whether the home watchdog process for the given run token is still alive. */

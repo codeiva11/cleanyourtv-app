@@ -18,9 +18,12 @@ NOOP_UNINSTALL	pm uninstall tv.cleanyour.noop
 NOOP_CLEANUP	rm -f /data/local/tmp/cleanyourtv/noop.apk
 PS_ARGS	ps -A -o ARGS
 PS_RSS	ps -A -o RSS,ARGS
+DEEP_BOOT_RECEIVERS	cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED
+DEEP_JOBS	dumpsys jobscheduler
 WIFI_OWNERS	dumpsys wifi | grep -o -E -e 'cname=[^ ]*' -e 'Configured networks (Begin|End)' -e 'ID: -?[0-9]+ SSID'
 fileSha256(OVERLAY/config.json)	sha256sum '/sdcard/Android/data/com.gathin.tvhome/files/config.json'
 installedSha256(com.gathin.tvhome)	p=$(pm path 'com.gathin.tvhome' | grep base.apk | head -n 1); sha256sum "${p#package:}"
 watchdogAlive(0123456789abcdef)	pgrep -f '[c]leanyourtv-rollback-0123456789abcdef'
+deepPackageDump(com.gathin.tvhome)	dumpsys package 'com.gathin.tvhome'
 copyApk(com.gathin.tvhome, signer-0123456789abcdef.apk, 16777216)	mkdir -p /data/local/tmp/cleanyourtv && p=$(pm path 'com.gathin.tvhome' | grep base.apk | head -n 1) && [ -n "$p" ] && [ "$(stat -c %s "${p#package:}")" -le 16777216 ] && cp "${p#package:}" '/data/local/tmp/cleanyourtv/signer-0123456789abcdef.apk'
 signerCleanup(signer-0123456789abcdef.apk)	rm -f '/data/local/tmp/cleanyourtv/signer-0123456789abcdef.apk'

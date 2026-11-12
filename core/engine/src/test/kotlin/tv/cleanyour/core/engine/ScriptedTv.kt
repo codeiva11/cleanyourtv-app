@@ -11,6 +11,7 @@ import tv.cleanyour.core.model.AdbException
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.Component
 import tv.cleanyour.core.model.ConnectionState
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.DeviceFacts
 import tv.cleanyour.core.model.Endpoint
 import tv.cleanyour.core.model.EnabledState
@@ -333,6 +334,7 @@ class ScriptedProber(private val tv: ScriptedTv) : Prober {
     override suspend fun watchdogAlive(session: TvSession, token: RunToken): Boolean = token.value in tv.watchdogs
     override suspend fun bootId(session: TvSession): String = "boot-1"
     override suspend fun ramByPackage(session: TvSession): Map<PackageName, Int> { calls += "ramByPackage"; return emptyMap() }
+    override suspend fun deepScan(session: TvSession, suspects: Set<PackageName>): DeepScanResult = DeepScanResult(0)
 }
 
 // The probe's own fixed lines, so the scripted session logs them like any other command.

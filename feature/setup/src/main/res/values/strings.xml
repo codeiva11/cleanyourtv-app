@@ -154,6 +154,7 @@
     <string name="customise_title">Customise</string>
     <string name="customise_live">{total, plural, other {{off} of # off}}</string>
     <string name="customise_nothing_deleted">Nothing is deleted; \"off\" means asleep.</string>
+    <string name="customise_uninstalls_apps">Uninstall removes system apps for user 0; Undo puts them back.</string>
     <string name="customise_show_fewer">Show fewer</string>
     <string name="customise_group_voice">Voice assistant</string>
     <string name="customise_group_cast">Chromecast</string>
@@ -195,7 +196,7 @@
     <string name="customise_auto_debloat">Auto-find bloat (REA)</string>
     <string name="customise_auto_debloat_note">Finds ad, tracking and bloat apps on this TV and adds them to the clean-up</string>
     <string name="customise_clean_stock_home">Clean stock home</string>
-    <string name="customise_clean_stock_home_note">Switches off TV recommendations and ad tracking on the stock home screen</string>
+    <string name="customise_clean_stock_home_note">Permanently uninstalls the Shop tab and ad providers, clears the launcher\'s cached ads and data, and turns animations off</string>
     <string name="customise_uninstall_bloat">Permanently uninstall bloat</string>
     <string name="customise_uninstall_bloat_warning">Removes the apps instead of only switching them off. A removed system app can be put back with Undo everything; a user-installed app is only ever switched off</string>
     <string name="customise_group_commands">Show commands</string>

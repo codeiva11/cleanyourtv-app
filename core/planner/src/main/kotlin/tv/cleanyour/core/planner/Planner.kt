@@ -23,7 +23,10 @@ sealed interface PlanRequest {
     // RFC-RAM-1 (2026-11-04, fork): Setup carries the measured per-app RAM (RSS KB, from
     // Prober.ramByPackage) so the planner's REA can rank real heavy apps instead of guessing
     // from the package name. Empty when the probe could not run; the REA then uses its guess.
-    data class Setup(val resolution: ProfileResolution, val choices: Choices, val ramByPackage: Map<PackageName, Int> = emptyMap()) : PlanRequest
+    // RFC-DEEP-1 (2026-11-12, fork): Setup carries the REA deep scan (Prober.deepScan) so the
+    // planner can nominate packages the scan caught reviving ads after a reboot. Null when the
+    // scan could not run; the REA then uses its static rules alone.
+    data class Setup(val resolution: ProfileResolution, val choices: Choices, val ramByPackage: Map<PackageName, Int> = emptyMap(), val deepScan: DeepScanResult? = null) : PlanRequest
     data class PutBack(val pkg: PackageName) : PlanRequest
     data class SwitchOff(val pkgs: Set<PackageName>) : PlanRequest
     data class Leftovers(val expectedDisabled: Set<PackageName>) : PlanRequest

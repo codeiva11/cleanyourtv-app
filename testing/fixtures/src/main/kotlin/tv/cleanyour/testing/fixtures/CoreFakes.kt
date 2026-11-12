@@ -3,6 +3,7 @@ package tv.cleanyour.testing.fixtures
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Component
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.DeviceFacts
 import tv.cleanyour.core.model.HomeResolution
 import tv.cleanyour.core.model.PackageName
@@ -45,6 +46,8 @@ class FakeProber(
     @Volatile var refusesInstall: Boolean = false,
     @Volatile var bootIdValue: String = "fake-boot-1",
     @Volatile var ramByPackageValue: Map<PackageName, Int> = emptyMap(),
+    // RFC-DEEP-1: the deep scan's settable answer.
+    @Volatile var deepScanValue: DeepScanResult = DeepScanResult(0),
 ) : Prober {
     val fileHashes = ConcurrentHashMap<String, Sha256>()
     val installedHashes = ConcurrentHashMap<PackageName, Sha256>()
@@ -67,6 +70,7 @@ class FakeProber(
     override suspend fun watchdogAlive(session: TvSession, token: RunToken): Boolean { calls += "watchdogAlive"; return token in liveWatchdogs }
     override suspend fun bootId(session: TvSession): String { calls += "bootId"; return bootIdValue }
     override suspend fun ramByPackage(session: TvSession): Map<PackageName, Int> { calls += "ramByPackage"; return ramByPackageValue }
+    override suspend fun deepScan(session: TvSession, suspects: Set<PackageName>): DeepScanResult { calls += "deepScan"; return deepScanValue }
 }
 
 // Profiles from a list; resolve() is an exact model match, else None with no stock launchers.

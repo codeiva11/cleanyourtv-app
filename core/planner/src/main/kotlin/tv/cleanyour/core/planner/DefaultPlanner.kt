@@ -244,7 +244,7 @@ class DefaultPlanner(
             // when the TV has a profile — its groups join the profile's, profile rows first, so the
             // profile wins a package both know (the `covered` set skips the REA row for it).
             val packageGroups: List<PackageGroup> = rawPackageGroups + if (choices.autoDebloat || choices.cleanStockHome) {
-                val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers, ramByPackage = req.ramByPackage)
+                val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers, ramByPackage = req.ramByPackage, deepScan = req.deepScan)
                 ReaEngine.synthesizeReaGroups(candidates)
             } else {
                 emptyList()
@@ -312,11 +312,14 @@ class DefaultPlanner(
             keepNames = choices.kept.filter { installed(it) }.map { name(it) }.sorted()
 
             if (choices.cleanStockHome && ReaEngine.isStockGoogleTvLauncher(snapshot)) {
-                cleanStockHome(stockLaunchers, choices.kept, req.ramByPackage)
+                cleanStockHome(stockLaunchers, choices.kept, req.ramByPackage, choices.uninstallBloat)
             }
         }
 
-        fun cleanStockHome(stockLaunchers: List<Component>, kept: Set<PackageName> = emptySet(), ramByPackage: Map<PackageName, Int> = emptyMap()) {
+        fun cleanStockHome(stockLaunchers: List<Component>, kept: Set<PackageName> = emptySet(), ramByPackage: Map<PackageName, Int> = emptyMap(),
+            // S1: the uninstall toggle reaches here. OFF means the Shop/ad packages are only
+            // disabled, never uninstalled — not even the core ones.
+            uninstallBloat: Boolean = true) {
             val stockRows = mutableListOf<RowSummary>()
 
             // 0. Ensure Google Play Store and external storage stay installed, enabled and safe
@@ -326,12 +329,20 @@ class DefaultPlanner(
             step(Op.Enable(vending), Prior(packageState = state(vending)?.enabled), GROUP_STOCK_CLEAN, "Ensuring Google Play Store is enabled", FailurePolicy.CONTINUE)
             step(Op.Enable(extStorage), Prior(packageState = state(extStorage)?.enabled), GROUP_STOCK_CLEAN, "Ensuring external storage is enabled", FailurePolicy.CONTINUE)
 
-            // 1. Permanently uninstall every ad, recommendation, and Shop tab provider.
+            // 1. Clear pending ad notifications FIRST (S2): the provider belongs to
+            // tvrecommendations, so the delete must run while that package is still on the TV.
+            // After the uninstall below the provider is gone and this step fails every run.
+            step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
+
+            // 2. Permanently uninstall every ad, recommendation, and Shop tab provider.
             //    RFC-SHOP-1: com.google.android.videos (Google Play Movies & TV) is the direct
             //    provider of the "Shop" tab in com.google.android.tvlauncher and com.google.android.apps.tv.launcherx.
             //    Unless it is uninstalled via pm uninstall -k --user 0, the stock launcher queries it on reboot
             //    and restores the Shop tab! All packages in STOCK_AD_AND_SHOP_PACKAGES that exist on this TV
-            //    (plus core Google ad/shop providers) are permanently uninstalled here.
+            //    (plus core Google ad/shop providers) are permanently uninstalled here — but only the
+            //    ones the TV actually has appear on screen and get a command (task 4), except the
+            //    two core packages, which always get cleanup + uninstall so a package the snapshot
+            //    missed cannot revive on reboot.
             for (pkg in ReaEngine.STOCK_AD_AND_SHOP_PACKAGES) {
                 if (pkg in kept) continue
                 val isCore = pkg == ReaEngine.STOCK_TV_RECOMMENDATIONS || pkg == ReaEngine.GOOGLE_PLAY_MOVIES
@@ -340,21 +351,26 @@ class DefaultPlanner(
 
                 if (isPresent) {
                     stockRows += RowSummary(pkg, name(pkg), ramNote(pkg, description(pkg), ramByPackage), off = true, protected = false, whyProtected = null)
-                    step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
-                    uninstall(pkg, GROUP_STOCK_CLEAN)
-                } else if (isCore) {
+                    if (uninstallBloat) {
+                        // pm clear force-stops the app first, then the uninstall removes it for
+                        // user 0 — so nothing of it keeps running in the background.
+                        step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
+                        uninstall(pkg, GROUP_STOCK_CLEAN)
+                    } else {
+                        disable(pkg, GROUP_STOCK_CLEAN)
+                    }
+                } else if (isCore && uninstallBloat) {
                     // Core package not reported currently installed: ensure it is cleared and uninstalled so it cannot revive on reboot.
+                    // S3: the Prior records the ACTUAL presence (false) — Undo must never
+                    // install-existing an app that was never there.
                     step(Op.ClearPackage(pkg), null, GROUP_STOCK_CLEAN, "Clearing ${name(pkg)} cache", FailurePolicy.CONTINUE)
-                    step(Op.Uninstall(pkg), Prior(present = true), GROUP_STOCK_CLEAN, "Uninstalling ${name(pkg)}", FailurePolicy.CONTINUE)
+                    step(Op.Uninstall(pkg), Prior(present = false), GROUP_STOCK_CLEAN, "Uninstalling ${name(pkg)}", FailurePolicy.CONTINUE)
                 }
             }
 
             if (stockRows.isNotEmpty()) {
                 groups += GroupSummary(GROUP_STOCK_CLEAN, TITLE_STOCK_CLEAN, stockRows.size, stockRows.size, stockRows)
             }
-
-            // 2. Clear pending ad notifications
-            step(Op.DeleteContent("content://com.google.android.tvrecommendations.NotificationContentProvider/notifications"), null, GROUP_STOCK_CLEAN, "Clearing pending ad notifications", FailurePolicy.CONTINUE)
 
             // 3. Block every known ad/shop setting so the Shop tab, Discover row and video ads stay gone permanently
             step(Op.SettingsPut(SettingKey.FREEPLAY_ENABLED, "0"), Prior(settingValue = snapshot.settings[SettingKey.FREEPLAY_ENABLED]), GROUP_STOCK_CLEAN, "Permanent block: auto-playing video ads", FailurePolicy.CONTINUE)

@@ -36,7 +36,7 @@ import tv.cleanyour.core.store.DocumentStore
 import tv.cleanyour.core.store.IdGen
 import tv.cleanyour.core.store.TvRepository
 
-// TvRepository over the DocumentStore: one tvs/<tvId>/tv.json per TV (ARCHITECTURE 5.1), schema 1,
+// TvRepository over the DocumentStore: one tvs/<tvId>/tv.json per TV (ARCHITECTURE 5.1), schema 2,
 // written atomically by the store on every upsert. `load()` runs once before the first frame so
 // the start destination is decided from disk (ARCHITECTURE 2.2). A record that does not parse is
 // skipped, never fatal: the rest of the TVs still open.
@@ -62,7 +62,13 @@ class DocumentTvRepository(private val store: DocumentStore) : TvRepository {
 }
 
 object TvJson {
-    const val SCHEMA = 1
+    // Schema 2 (2026-11-12, M4): autoDebloat/uninstallBloat false in a schema-1 record was the
+    // old eligibility gate's doing, not the person's — the gate forced all three toggles false
+    // on any TV without a stock Google launcher, and the stored false then read as an explicit
+    // choice. Decoding a schema-1 record heals those two back to true once; the record is
+    // re-encoded as schema 2, so a false set in Customise AFTER this release is respected.
+    // cleanStockHome is not healed: false is correct there on a TV with no stock launcher.
+    const val SCHEMA = 2
     private val json = Json { prettyPrint = false }
 
     fun encode(tv: Tv): ByteArray = json.encodeToString(JsonElement.serializer(), obj(
@@ -82,7 +88,8 @@ object TvJson {
 
     fun decode(bytes: ByteArray): Tv {
         val o = json.parseToJsonElement(bytes.decodeToString()).jsonObject
-        require(o.int("schema") == SCHEMA) { "unknown tv.json schema" }
+        val schema = o.int("schema") ?: 1
+        require(schema in 1..2) { "unknown tv.json schema" }
         val trust = o.getValue("trust").jsonObject
         return Tv(
             id = TvId(o.str("id")!!), nickname = o.str("nickname")!!, room = o.str("room"),
@@ -97,8 +104,9 @@ object TvJson {
                 w.strings("kept").map(::PackageName).toSet(), w.strings("extraOff").map(::PackageName).toSet(),
                 w.bool("keepDebuggingOn") ?: false, w.str("planId")?.let(::PlanId), w.long("updatedAtMs") ?: 0,
                 cleanStockHome = w.bool("cleanStockHome") ?: true,
-                autoDebloat = w.bool("autoDebloat") ?: true,
-                uninstallBloat = w.bool("uninstallBloat") ?: true) },
+                // M4 one-time heal (schema 1 only): the old gate's false was never a choice.
+                autoDebloat = if (schema == 1 && w.bool("autoDebloat") == false) true else (w.bool("autoDebloat") ?: true),
+                uninstallBloat = if (schema == 1 && w.bool("uninstallBloat") == false) true else (w.bool("uninstallBloat") ?: true)) },
             lastSeenAt = o.long("lastSeenAt") ?: 0, debugging = DebugState.valueOf(o.str("debugging") ?: "UNKNOWN"),
         )
     }

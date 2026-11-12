@@ -697,17 +697,27 @@ class SetupMachine(
         val profile = (res as? ProfileResolution.Exact)?.profile
         val snap = snapshot
         val resolvedPkg = snap?.home?.resolved?.pkg
-        val isCleanStockEligible = (resolvedPkg != null && resolvedPkg in ReaEngine.STOCK_GOOGLE_LAUNCHERS) ||
+        // M4 (2026-11-12): the eligibility split. Only Clean Stock Home is gated on a stock
+        // Google launcher (tvlauncher or launcherx) — it has nothing to clean without one.
+        // autoDebloat and uninstallBloat are NOT: REA needs only the package list + RAM, so they
+        // default true on ANY TV. Propagation fills only what is unset: a stored choice is never
+        // recomputed — a false the person set in Customise stays false, and a true stays true.
+        // (Schema-1 records that the old gate forced false are healed once at decode time, in
+        // TvJson, because that false was the gate's, never the person's.)
+        val isStockLauncher = (resolvedPkg != null && resolvedPkg in ReaEngine.STOCK_GOOGLE_LAUNCHERS) ||
             (resolvedPkg == null && snap?.packages?.keys?.any { it in ReaEngine.STOCK_GOOGLE_LAUNCHERS } == true)
-        val baseDraft = existing?.wizard?.copy(
-            cleanStockHome = if (existing.wizard?.cleanStockHome == false) false else isCleanStockEligible,
-            autoDebloat = if (existing.wizard?.autoDebloat == false) false else isCleanStockEligible,
-            uninstallBloat = if (existing.wizard?.uninstallBloat == false) false else isCleanStockEligible
-        ) ?: WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
-            keepDebuggingOn = false, planId = null, updatedAtMs = now,
-            cleanStockHome = isCleanStockEligible,
-            autoDebloat = isCleanStockEligible,
-            uninstallBloat = isCleanStockEligible)
+        val existingWizard = existing?.wizard
+        val baseDraft = if (existingWizard != null) {
+            existingWizard.copy(
+                cleanStockHome = if (!existingWizard.cleanStockHome) false else isStockLauncher,
+            )
+        } else {
+            WizardDraft(step = 3, level = existing?.level ?: Level.SIMPLE, kept = emptySet(), extraOff = emptySet(),
+                keepDebuggingOn = false, planId = null, updatedAtMs = now,
+                cleanStockHome = isStockLauncher,
+                autoDebloat = true,
+                uninstallBloat = true)
+        }
         val draft = baseDraft
         val tv = Tv(
             id = s.tvId, nickname = name, room = existing?.room, facts = facts,
@@ -735,9 +745,6 @@ class SetupMachine(
         if (fresh) snapshot = deps.runner.freshSnapshot(s)
         val snap = snapshot ?: return
         val draft = withoutRefusedChoices(record, record.wizard ?: return, snap)
-        val resolvedPkg = snap.home.resolved?.pkg
-        val isStock = (resolvedPkg != null && resolvedPkg in ReaEngine.STOCK_GOOGLE_LAUNCHERS) ||
-            (resolvedPkg == null && snap.packages.keys.any { it in ReaEngine.STOCK_GOOGLE_LAUNCHERS })
         val choices = Choices(
             kept = draft.kept, extraOff = draft.extraOff,
             keepDebuggingOn = draft.keepDebuggingOn,
@@ -746,7 +753,11 @@ class SetupMachine(
             uninstallBloat = draft.uninstallBloat,
         )
         val ram = deps.runner.ramByPackage(s)
-        when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices, ramByPackage = ram), snap)) {
+        // RFC-DEEP-1: the deep scan runs on the same snapshot, before the plan is made, and its
+        // result rides with the Setup request. A scan that cannot run yields null; the plan is
+        // made from the static rules alone.
+        val deepScan = deps.runner.deepScan(s, ReaEngine.deepScanSuspects(snap))
+        when (val r = deps.runner.plan(record, PlanRequest.Setup(res, choices, ramByPackage = ram, deepScan = deepScan), snap)) {
             is PlanResult.Ok -> {
                 setupPlan = r.plan
                 deps.log.line("setup: plan ready, ${r.plan.steps.size} steps, ${r.plan.steps.count { it.op is Op.Disable || it.op is Op.Uninstall }} to switch off or uninstall, " +

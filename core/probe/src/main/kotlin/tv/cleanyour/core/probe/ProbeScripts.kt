@@ -72,6 +72,19 @@ object ProbeScripts {
     val PS_ARGS = ShellLine("ps -A -o ARGS")
     val PS_RSS = ShellLine("ps -A -o RSS,ARGS")
 
+    // RFC-DEEP-1 (2026-11-12, fork): the REA deep scan, read-only like every other probe line.
+    // BOOT_COMPLETED receivers are the packages that wake on reboot; the JobScheduler dump is the
+    // scheduled jobs that re-fetch ads and Shop config in the background. The per-package dump
+    // (deepPackageDump) reads that one package's receivers, content providers and signing
+    // certificate — only for the suspects ReaEngine.deepScanSuspects names, never the whole TV.
+    val DEEP_BOOT_RECEIVERS = ShellLine("cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED")
+    val DEEP_JOBS = ShellLine("dumpsys jobscheduler")
+
+    fun deepPackageDump(pkg: PackageName): ShellLine {
+        require(PACKAGE_RE.matches(pkg.value))
+        return ShellLine("dumpsys package ${q(pkg.value)}")
+    }
+
     // Launcher v2.4.0's guard (tools/disable.sh): who saved each Wi-Fi network. Only fixed words leave
     // the TV (SavedWifi): the cname= owners, WifiConfigManager's list markers and "ID: <n> SSID" per
     // saved network, the match ending before the network's name.
@@ -112,6 +125,7 @@ object ProbeScripts {
         "FREE_DATA" to FREE_DATA, "SCREENSHOT" to SCREENSHOT, "SCREENSHOT_CLEANUP" to SCREENSHOT_CLEANUP, "MKDIR_TMP" to MKDIR_TMP,
         "NOOP_INSTALL" to NOOP_INSTALL, "NOOP_UNINSTALL" to NOOP_UNINSTALL, "NOOP_CLEANUP" to NOOP_CLEANUP, "PS_ARGS" to PS_ARGS,
         "PS_RSS" to PS_RSS,
+        "DEEP_BOOT_RECEIVERS" to DEEP_BOOT_RECEIVERS, "DEEP_JOBS" to DEEP_JOBS,
         "WIFI_OWNERS" to WIFI_OWNERS,
     )
 }

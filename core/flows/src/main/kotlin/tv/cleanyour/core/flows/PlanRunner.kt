@@ -6,6 +6,7 @@ import tv.cleanyour.core.engine.Engine
 import tv.cleanyour.core.engine.RunState
 import tv.cleanyour.core.engine.StartRefusal
 import tv.cleanyour.core.engine.StartResult
+import tv.cleanyour.core.model.DeepScanResult
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.model.SnapshotReason
@@ -65,6 +66,15 @@ class PlanRunner(
         prober.ramByPackage(session)
     } catch (e: Exception) {
         emptyMap()
+    }
+
+    // RFC-DEEP-1: best-effort REA deep scan for the suspect packages. A scan that cannot run
+    // (transport lost, a dump the firmware will not print) yields null and the REA falls back
+    // to its static rules — the plan itself must never fail because a scan input could not be read.
+    suspend fun deepScan(session: TvSession, suspects: Set<PackageName>): DeepScanResult? = try {
+        prober.deepScan(session, suspects)
+    } catch (e: Exception) {
+        null
     }
 
     suspend fun plan(tv: Tv, request: PlanRequest, snapshot: Snapshot): PlanResult =

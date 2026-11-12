@@ -260,4 +260,40 @@ class AdbProberTest {
         assertEquals(3, home.claimants.size)
         assertEquals(2, s.execLines.size)
     }
+
+    // RFC-DEEP-1: the deep scan reads the boot-receiver list, the job scheduler and one
+    // per-suspect package dump, and merges them into per-package evidence. A suspect with no
+    // dump still keeps what the two global scans saw; a section that fails simply yields no
+    // evidence for it.
+    @Test fun deepScanFindsBootReceiversJobsAndProviders() = runBlocking<Unit> {
+        val customizer = p("com.vendor.customizer")
+        val rec = Recording()
+            .on(ProbeScripts.DEEP_BOOT_RECEIVERS.text,
+                "com.vendor.customizer/.BootReceiver\ncom.google.android.tvrecommendations/.BootReceiver\n")
+            .on(ProbeScripts.DEEP_JOBS.text,
+                "JOB #u0a173/1: 7d2e1234 com.vendor.customizer/.AdJob\nJOB #u0a173/2: 7d2e1235 com.vendor.customizer/.SyncJob\n")
+            .on(ProbeScripts.deepPackageDump(customizer).text,
+                "Package [com.vendor.customizer] (1234):\n" +
+                "    Receivers:\n" +
+                "      com.vendor.customizer/.BootReceiver:\n" +
+                "    Providers:\n" +
+                "      com.vendor.customizer.AdProvider:\n" +
+                "        authority=com.vendor.customizer.provider\n" +
+                "    signatures:\n" +
+                "      " + "aa".repeat(32) + "\n")
+        val s = FakeTvSession(recording = rec)
+        val scan = prober.deepScan(s, setOf(customizer, p("com.google.android.tvrecommendations")))
+        val ev = scan.evidence.getValue(customizer)
+        assertEquals(listOf(".BootReceiver"), ev.bootReceivers)
+        assertEquals(listOf("com.vendor.customizer.AdProvider"), ev.providers)
+        assertEquals(2, ev.jobs)
+        assertEquals("aa".repeat(32), ev.signatureHex)
+        assertTrue(ev.hasRevivalEvidence)
+        // No dump was recorded for the recommendations package, so it keeps only the boot
+        // receiver the global scan saw.
+        val recEv = scan.evidence.getValue(p("com.google.android.tvrecommendations"))
+        assertEquals(listOf(".BootReceiver"), recEv.bootReceivers)
+        assertTrue(recEv.providers.isEmpty())
+        assertEquals(0, recEv.jobs)
+    }
 }
