@@ -363,6 +363,19 @@ class PlannerTest {
         assertTrue(Op.RestartHome(vendor) in ops(p), "the launcher is restarted with them off")
     }
 
+    // RFC-SHOP-2 (2026-11-12): Undo everything puts a switched-off launcher ad component
+    // back on — a component disable is a lasting change, so it is undone like a package
+    // switch, in the package-states phase, with the enable as its inverse.
+    @Test fun undoEverythingPutsALauncherAdComponentBackOn() {
+        val c = Component(PackageName("com.google.android.tvlauncher"),
+            "com.google.android.tvlauncher.home.featuredcarousel.WhyThisAdActivity")
+        val changes = listOf(change(0, Op.DisableComponent(c), Prior()))
+        val p = plan(PlanRequest.UndoEverything(changes, removeLauncher = false), snapshot())
+        assertEquals(listOf(Op.EnableComponent(c)), ops(p))
+        assertEquals("Switching the launcher ad component back on",
+            p.steps.single { it.op == Op.EnableComponent(c) }.narration)
+    }
+
     @Test fun aFireOsHomeIsProtectedAndTheCleanUpAloneIsPlanned() {
         val amazon = Component(PackageName("com.amazon.tv.launcher"), ".ui.HomeActivity_vNext")
         val starter = PackageName("com.amazon.firehomestarter")

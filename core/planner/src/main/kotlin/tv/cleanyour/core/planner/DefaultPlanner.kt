@@ -612,6 +612,18 @@ class DefaultPlanner(
                         val inverse = renderer.inverse(c.op, prior)?.let { protectedInverse(t.pkg, it) } ?: continue
                         step(inverse, Prior(packageState = current.enabled), GROUP_UNDO, undoNarration(inverse, t.pkg), FailurePolicy.CONTINUE)
                     }
+                    // RFC-SHOP-2: a launcher ad component we switched off goes back on (and one
+                    // we switched on goes back off). The snapshot carries no per-component state,
+                    // so there is no current-vs-prior skip like a package has — the step's own
+                    // verify (pm's print-back) confirms the result, and switching a component
+                    // that is already in the target state is a no-op that still prints it. A
+                    // component of a package that is gone is skipped, not failed.
+                    is UndoOrder.Target.ComponentEnabled -> {
+                        if (!installed(t.component.pkg)) continue
+                        val inverse = renderer.inverse(c.op, c.prior ?: Prior())?.let { protectedInverse(t.component.pkg, it) } ?: continue
+                        val narration = if (inverse is Op.EnableComponent) "Switching the launcher ad component back on" else "Switching the launcher ad component back off"
+                        step(inverse, null, GROUP_UNDO, narration, FailurePolicy.CONTINUE)
+                    }
                     is UndoOrder.Target.Setting -> {
                         val original = c.prior?.settingValue
                         val current = snapshot.settings[t.key]
