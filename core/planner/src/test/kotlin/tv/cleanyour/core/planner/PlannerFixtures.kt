@@ -64,6 +64,20 @@ object PlannerFixtures {
         reason = reason,
     ).withSettings(mapOf(SettingKey.SCREENSAVER_ENABLED to "1", SettingKey.ADB_ENABLED to "1"))
 
+    // The reference capture lists these preinstalled apps under /data/app — they were
+    // updated, so the path-only derivation calls them user-installed. The real probe
+    // reads the dumpsys flags, which stay SYSTEM after an update, so on a real TV they
+    // are system apps. Tests that treat them as the system apps they are mark them so
+    // (see withSystemApps); the guard itself stays as it is.
+    val updatedSystemApps: List<PackageName> = listOf(
+        PackageName("com.mitv.tvhome.atv"),
+        PackageName("com.xm.webcontent"),
+        PackageName("com.google.android.tvrecommendations"),
+        PackageName("com.google.android.katniss"),
+        PackageName("com.google.android.play.games"),
+        PackageName("com.google.android.videos"),
+    )
+
     fun installedLauncher(signer: Sha256 = artifact().signer, versionCode: Long = 1, enabled: EnabledState = EnabledState.ENABLED) =
         launcher.pkg to PackageState(enabled, false, versionCode, signer, false, false, "Clean Your TV Home", true)
 
@@ -104,6 +118,12 @@ object PlannerFixtures {
 // Settings are not part of Samples.snapshot; the hash is recomputed so every store accepts it.
 fun Snapshot.withSettings(settings: Map<SettingKey, String?>): Snapshot =
     copy(settings = settings).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
+
+// A snapshot with these packages modelled as system apps. Only the system flag
+// changes; enabled/version/label are untouched, and the hash is recomputed.
+fun Snapshot.withSystemApps(pkgs: Collection<PackageName>): Snapshot =
+    copy(packages = packages + pkgs.associateWith { packages[it]!!.copy(system = true) })
+        .let { it.copy(contentHash = SnapshotCodec.hash(it)) }
 
 // A TV as plain data that ops change, for the apply-then-inverse and idempotence properties.
 class ModelTv(snapshot: Snapshot) {

@@ -39,6 +39,7 @@ import tv.cleanyour.core.planner.PlannerFixtures.refused
 import tv.cleanyour.core.planner.PlannerFixtures.setup
 import tv.cleanyour.core.planner.PlannerFixtures.snapshot
 import tv.cleanyour.core.planner.PlannerFixtures.stock
+import tv.cleanyour.core.planner.PlannerFixtures.updatedSystemApps
 import tv.cleanyour.core.planner.PlannerFixtures.wizard
 import tv.cleanyour.core.model.Snapshot
 import tv.cleanyour.core.spec.ProfileResolution
@@ -60,7 +61,9 @@ class PlannerTest {
     @Test fun keptAndExtraOffChangeExactlyThoseOps() {
         val videos = PackageName("com.google.android.videos")
         val netflix = PackageName("com.netflix.ninja")
-        val p = plan(setup(choices = choices(kept = setOf(videos), extraOff = setOf(netflix))))
+        // Videos and Netflix are preinstalled system apps on a real TV (the probe reads the
+        // dumpsys flags); the capture's path-only derivation calls them user-installed.
+        val p = plan(setup(choices = choices(kept = setOf(videos), extraOff = setOf(netflix))), snapshot().withSystemApps(updatedSystemApps + netflix))
         assertTrue(ops(p).none { it == Op.Disable(videos) })
         assertTrue(ops(p).contains(Op.Disable(netflix)))
         assertEquals(17, p.summary.groups.first().off)
@@ -95,7 +98,7 @@ class PlannerTest {
 
     @Test fun idempotentReplan() {
         // Everything already done: nothing to switch off, the launcher installed and in charge.
-        val snap = snapshot(disabled = debloatList.map { it.value }.toSet(), home = launcher, claimants = listOf(launcher, stock), extra = mapOf(installedLauncher()))
+        val snap = snapshot(disabled = debloatList.map { it.value }.toSet(), home = launcher, claimants = listOf(launcher, stock), extra = mapOf(installedLauncher())).withSystemApps(updatedSystemApps)
         val p = plan(setup(), snapshot = snap)
         assertEquals(emptyList<Step>(), p.steps)
         assertTrue(p.sections.isEmpty())
@@ -122,17 +125,17 @@ class PlannerTest {
 
     @Test fun switchOffAndLeftovers() {
         val a = PackageName("com.google.android.videos"); val b = PackageName("com.netflix.ninja")
-        val p = plan(PlanRequest.SwitchOff(setOf(a, b)))
+        val p = plan(PlanRequest.SwitchOff(setOf(a, b)), snapshot().withSystemApps(listOf(a, b)))
         assertEquals(listOf(Op.Disable(a), Op.Disable(b)), ops(p))
         assertEquals(PlanKind.SWITCH_OFF, p.kind)
-        assertTrue(refused(PlanRequest.SwitchOff(setOf(a, PackageName("com.android.systemui")))).single().contains("system UI"))
+        assertTrue(refused(PlanRequest.SwitchOff(setOf(a, PackageName("com.android.systemui"))), snapshot().withSystemApps(listOf(a))).single().contains("system UI"))
         assertTrue(refused(PlanRequest.SwitchOff(setOf(stock.pkg))).single().contains("home screen"))
-        val left = plan(PlanRequest.Leftovers(setOf(a, b)), snapshot(disabled = setOf(a.value)))
+        val left = plan(PlanRequest.Leftovers(setOf(a, b)), snapshot(disabled = setOf(a.value)).withSystemApps(listOf(a, b)))
         assertEquals(listOf(Op.Disable(b)), ops(left))
         assertEquals(PlanKind.LEFTOVERS, left.kind)
         // R1: a leftover that is HOME again after a TV update (the stock launcher re-enabled and
         // resolving HOME) is refused; only the home screen switch may switch a home screen off.
-        assertTrue(refused(PlanRequest.Leftovers(setOf(stock.pkg, b))).single().contains("home screen"))
+        assertTrue(refused(PlanRequest.Leftovers(setOf(stock.pkg, b)), snapshot().withSystemApps(listOf(b))).single().contains("home screen"))
         // The current HOME is protected even when the claimant list does not carry it (R5-W4 O5).
         val patchwall = Component(PackageName("com.mitv.tvhome.atv"), ".MainActivity")
         val pw = snapshot(home = patchwall, claimants = emptyList(), extra = mapOf(patchwall.pkg to PackageState(EnabledState.ENABLED, true, 1, null, false, false, "PatchWall", false)))
@@ -304,7 +307,7 @@ class PlannerTest {
         assertTrue(refusedBy(PlanRequest.SwitchOff(setOf(a))).single().contains(Denylist.REASON_PROFILE))
         assertTrue(refusedBy(PlanRequest.Leftovers(setOf(a))).single().contains(Denylist.REASON_PROFILE))
         // Without a source the planner cannot know (the executor's live check still refuses it).
-        assertEquals(listOf<Op>(Op.Disable(a)), ops(plan(PlanRequest.SwitchOff(setOf(a)))))
+        assertEquals(listOf<Op>(Op.Disable(a)), ops(plan(PlanRequest.SwitchOff(setOf(a)), snapshot().withSystemApps(listOf(a)))))
         // The wizard with the quirk: only the home screen switch switches it off.
         assertTrue(refusedBy(PlanRequest.SwitchOff(setOf(wizard))).single().contains(DefaultPlanner.REASON_WIZARD_SECTION_ONLY))
         assertTrue(refusedBy(PlanRequest.Leftovers(setOf(wizard))).single().contains(DefaultPlanner.REASON_WIZARD_SECTION_ONLY))

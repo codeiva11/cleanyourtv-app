@@ -27,10 +27,11 @@ class KeepUpdatesOnTest {
     private val ota = PackageName("com.mitv.ota")          // an updater by its name (D22)
     private val helper = PackageName("com.mitv.helper")    // an updater only by its profile group
     private val fota = PackageName("com.vendor.fota")      // an updater by name, in no group
-    private val on = PackageState(EnabledState.ENABLED, false, 1, null, false, false, null, false)
+    // Updaters are system apps (the capture has no entry for them, so the state is hand-built).
+    private val on = PackageState(EnabledState.ENABLED, true, 1, null, false, false, null, false)
     private val updates = PackageGroup("updates", "Software updates", GroupDefault.ASK, listOf(PackageEntry(ota, null), PackageEntry(helper, null)))
     private val prof = profile(extraGroups = listOf(updates))
-    private val snap = snapshot(extra = mapOf(ota to on, helper to on, fota to on))
+    private val snap = snapshot(extra = mapOf(ota to on, helper to on, fota to on, PackageName("com.netflix.ninja") to on))
     private val source = FakeProfileSource(listOf(prof)).also { it.resolver = { _, all -> ProfileResolution.Exact(all.single()) } }
 
     private fun planner(keep: Boolean) = DefaultPlanner(PlannerFixtures.clock, FakeIdGen(), ShellRenderer(), "0.3.0",
