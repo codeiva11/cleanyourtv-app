@@ -812,13 +812,17 @@ class PlannerTest {
 
     // A PatchWall feed that must stay on is governed by PatchWall, never by the leftover
     // list: it must not appear there at all, and a Custom choice for it is refused.
+    // (Mi TV+ is not in the reference capture, so the snapshot adds it. PatchWall is kept
+    // on here: the mitv group's default is DISABLE, so without the kept choice PatchWall
+    // would go off by default and the feed rule would not bite.)
     @Test fun patchWallFeedsNeverAppearInTheLeftoverList() {
         val mitvPlus = PackageName("com.mitv.tvhome.mitvplus")
-        val p = plan(setup(), snapshot = snapshot())
+        val patchwall = PackageName("com.mitv.tvhome.atv")
+        val snap = snapshot(extra = mapOf(mitvPlus to on.copy(label = "Mi TV+")))
+        val p = plan(setup(choices = choices(kept = setOf(patchwall))), snapshot = snap)
         assertTrue(p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.none { it.pkg == mitvPlus })
         // When PatchWall goes off with it, the feed is listable and goes off with it.
-        val patchwall = PackageName("com.mitv.tvhome.atv")
-        val both = plan(setup(choices = choices(extraOff = setOf(patchwall, mitvPlus))), snapshot = snapshot())
+        val both = plan(setup(choices = choices(extraOff = setOf(patchwall, mitvPlus))), snapshot = snap)
         assertTrue(both.summary.groups.flatMap { it.rows }.any { it.pkg == mitvPlus && it.off })
         assertTrue(ops(both).contains(Op.Disable(mitvPlus)))
     }
