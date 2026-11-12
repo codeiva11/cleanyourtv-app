@@ -67,7 +67,10 @@ class PlannerTest {
         assertTrue(ops(p).none { it == Op.Disable(videos) })
         assertTrue(ops(p).contains(Op.Disable(netflix)))
         assertEquals(17, p.summary.groups.first().off)
-        assertEquals(listOf("Netflix").map { "com.netflix.ninja" }, p.summary.groups.single { it.id == DefaultPlanner.GROUP_CUSTOM }.rows.map { it.pkg.value })
+        // Leftover apps (2026-11-12): Netflix matches no rule, so the extraOff choice
+        // lands it in the leftover list, not "Also switched off" — the op is unchanged.
+        assertEquals(listOf("Netflix").map { "com.netflix.ninja" }, p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.map { it.pkg.value })
+        assertTrue(p.summary.groups.none { it.id == DefaultPlanner.GROUP_CUSTOM }, "nothing is left for the Custom list")
         assertEquals(p.disabledPackages.toSet(), p.summary.switchOffPackages.toSet())
         // No facts in the fixture and no label from the probe: the name is read from the package
         // (round 3), never the raw package.
@@ -583,6 +586,132 @@ class PlannerTest {
             change(2, Op.Disable(stock.pkg), Prior(packageState = EnabledState.ENABLED)), change(3, Op.SetHome(launcher), Prior(home = stock)))
         val p = plan(PlanRequest.UseStockHome(stock), ours, journals)
         assertEquals(listOf(Op.Enable(stock.pkg), Op.SetHome(stock), Op.VerifyHome(stock), Op.PressHome), ops(p))
+    }
+
+    // --- Leftover apps (2026-11-12) -------------------------------------------------
+    // REA + the APK scan only ever see what a rule already flags. A useless
+    // preinstalled app matching no rule — a random browser, a vendor IoT app — never
+    // appeared anywhere. This list is derived from the TV's own snapshot, so those
+    // apps surface by their own display names and the person picks them; no package
+    // name is hardcoded in the feature itself (com.qjy.browser is the one exception,
+    // hardcode-nominated by name in VENDOR_BLOAT_PREFIXES from Sunil's own TV).
+
+    // A snapshot holding only the packages the test names (plus the stock home), so
+    // the leftover list is exactly what the test puts in it.
+    private fun smallSnapshot(extra: Map<PackageName, PackageState>): Snapshot =
+        snapshot(extra = extra).let { s ->
+            val keep = extra.keys + stock.pkg
+            s.copy(packages = s.packages.filterKeys { it in keep })
+                .let { it.copy(contentHash = tv.cleanyour.core.store.SnapshotCodec.hash(it)) }
+        }
+
+    private val on = PackageState(EnabledState.ENABLED, true, 1, null, false, false, null, false)
+
+    @Test fun leftoverAppsListUnmatchedSystemAppsAndNothingElse() {
+        val browser = PackageName("com.example.qjybrowser")
+        val iot = PackageName("com.example.swaiot")
+        val ads = PackageName("com.vendor.adservice")   // ADS_SIGNATURES "adservice"
+        val telem = PackageName("com.vendor.analytics") // TELEMETRY_SIGNATURES "analytics"
+        val mall = PackageName("com.coocaa.mall")       // STOCK_AD_AND_SHOP_PACKAGES, no signature
+        val mine = PackageName("com.example.myplayer")  // user-installed, unmatched
+        val off = PackageName("com.example.oldapp")     // already disabled, unmatched
+        val snap = smallSnapshot(mapOf(
+            browser to on.copy(label = "Qjy Browser"),
+            iot to on.copy(label = "Swaiot TV"),
+            ads to on,
+            telem to on,
+            mall to on,
+            mine to on.copy(system = false, label = "My Player"),
+            off to on.copy(enabled = EnabledState.DISABLED_USER, label = "Old App"),
+        ))
+        val p = plan(setup(), snapshot = snap)
+        val leftover = p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }
+        assertEquals(setOf(browser, iot), leftover.rows.map { it.pkg }.toSet())
+        assertTrue(leftover.rows.all { !it.off && !it.protected })
+        // The rows show the package name (Simple level hides the grey package line).
+        assertTrue(leftover.rows.all { it.description == it.pkg.value })
+        // No rule-matched, user-installed or already-off app leaks in, and the list
+        // plans nothing by itself: it is kept by default.
+        assertTrue(p.summary.groups.flatMap { it.rows }.none { it.pkg in setOf(ads, telem, mall, mine, off) })
+        assertEquals(emptyList<Op>(), ops(p))
+    }
+
+    // com.qjy.browser is 635 kB and low-RAM, which is exactly why rule 4 (RAM >= 50 MB)
+    // never caught it: a small, quiet system app must still surface here. (com.qjy.browser
+    // itself is now hardcode-nominated, so the stand-in below is an unmatched app of the
+    // same shape.)
+    @Test fun smallLowRamSystemAppAppearsInTheLeftoverList() {
+        val browser = PackageName("com.example.qjybrowser")
+        val snap = smallSnapshot(mapOf(browser to on.copy(label = "Qjy Browser")))
+        val req = PlanRequest.Setup(ProfileResolution.Exact(profile()), choices(), ramByPackage = mapOf(browser to 1024))
+        val p = plan(req, snapshot = snap)
+        val leftover = p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }
+        assertEquals(listOf(browser), leftover.rows.map { it.pkg })
+        assertEquals("com.example.qjybrowser · about 1 MB in RAM", leftover.rows.single().description)
+        assertFalse(leftover.rows.single().off)
+    }
+
+    // com.qjy.browser, verified on Sunil's Skyworth SWTV (system app, v1.218, 635 kB):
+    // the hardcoded VENDOR_BLOAT_PREFIXES entry nominates it, so it never needs the
+    // leftover list — with REA on it lands in the bloat group, off by default.
+    @Test fun qjyBrowserIsNominatedByNameAndNeverNeedsTheLeftoverList() {
+        val qjy = PackageName("com.qjy.browser")
+        val snap = smallSnapshot(mapOf(qjy to on.copy(label = "QJYBrowser")))
+        val p = plan(setup(choices = choices(autoDebloat = true)), snapshot = snap)
+        assertTrue(p.summary.groups.none { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }, "a named vendor app is matched, not leftover")
+        val row = p.summary.groups.flatMap { it.rows }.single { it.pkg == qjy }
+        assertTrue(row.off, "the vendor browser is auto-nominated")
+        assertEquals("rea_bloat", p.summary.groups.single { g -> g.rows.any { it.pkg == qjy } }.id)
+        assertTrue(ops(p).contains(Op.Disable(qjy)))
+        // With REA off a named candidate is shown nowhere, as before — matched, not leftover.
+        val hidden = plan(setup(), snapshot = snap)
+        assertTrue(hidden.summary.groups.none { g -> g.rows.any { it.pkg == qjy } })
+    }
+
+    @Test fun leftoverAppSelectionUninstallsAndUndoPutsItBack() {
+        val browser = PackageName("com.example.qjybrowser")
+        val snap = smallSnapshot(mapOf(browser to on.copy(label = "Qjy Browser")))
+        val p = plan(setup(choices = choices(extraOff = setOf(browser), uninstallBloat = true)), snapshot = snap)
+        assertEquals(listOf(Op.ClearPackage(browser), Op.Uninstall(browser)), ops(p))
+        val row = p.summary.groups.single { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS }.rows.single()
+        assertTrue(row.off)
+        // Undo everything: the uninstall's prior (present, system app) brings it back.
+        val journals = listOf(
+            change(0, Op.ClearPackage(browser), null),
+            change(1, Op.Uninstall(browser), Prior(packageState = EnabledState.ENABLED, present = true)),
+        )
+        val gone = smallSnapshot(emptyMap())
+        val undo = plan(PlanRequest.UndoEverything(journals, removeLauncher = false), gone)
+        assertEquals(listOf(Op.InstallExisting(browser)), ops(undo))
+    }
+
+    @Test fun leftoverAppSelectionDisablesAndReplanIsEmpty() {
+        val browser = PackageName("com.example.qjybrowser")
+        val snap = smallSnapshot(mapOf(browser to on.copy(label = "Qjy Browser")))
+        val p = plan(setup(choices = choices(extraOff = setOf(browser))), snapshot = snap)
+        assertEquals(listOf(Op.Disable(browser)), ops(p))
+        // Apply, then plan again with the same choices: nothing left to do.
+        val tv = ModelTv(snap)
+        tv.apply(p)
+        val again = plan(setup(choices = choices(extraOff = setOf(browser))), tv.snapshot())
+        assertEquals(emptyList<Op>(), ops(again))
+        // And Undo everything switches it back on.
+        val undo = plan(PlanRequest.UndoEverything(tv.changes, removeLauncher = false), tv.snapshot())
+        assertTrue(ops(undo).contains(Op.Enable(browser)))
+    }
+
+    @Test fun leftoverAppsNeverDuplicateAnotherGroup() {
+        val ads = PackageName("com.vendor.adservice")
+        val browser = PackageName("com.example.qjybrowser")
+        val snap = smallSnapshot(mapOf(
+            ads to on,
+            browser to on.copy(label = "Qjy Browser"),
+        ))
+        val p = plan(setup(choices = choices(autoDebloat = true, extraOff = setOf(browser))), snapshot = snap)
+        val all = p.summary.groups.flatMap { it.rows }
+        assertEquals(1, all.count { it.pkg == browser }, "a selected leftover row lives in its own group, not Custom too")
+        assertEquals(1, all.count { it.pkg == ads }, "an REA candidate lives in its REA group, not the leftover list")
+        assertTrue(p.summary.groups.none { it.id == DefaultPlanner.GROUP_CUSTOM })
     }
 }
 

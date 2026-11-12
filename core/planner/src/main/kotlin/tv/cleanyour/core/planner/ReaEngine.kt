@@ -246,6 +246,10 @@ object ReaEngine {
         "com.panasonic.tv.partner",
         "com.amazon.device.sale",
         "com.amazon.kindle.otter.oobe",
+        // Skyworth's preinstalled browser (verified 2026-11-12 from Sunil's own Skyworth
+        // SWTV Settings screen: system app, v1.218, 635 kB). A TV browser nobody browses
+        // on; small and low-RAM, so rule 4 never catches it — it needs the name.
+        "com.qjy.browser",
     )
 
     data class Candidate(

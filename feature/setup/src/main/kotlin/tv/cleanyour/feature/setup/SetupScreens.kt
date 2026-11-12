@@ -54,6 +54,7 @@ import tv.cleanyour.core.flows.Sheet
 import tv.cleanyour.core.flows.StopAction
 import tv.cleanyour.core.flows.StopCase
 import tv.cleanyour.core.model.Level
+import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.planner.GroupSummary
 import tv.cleanyour.core.planner.RowSummary
 import tv.cleanyour.ui.design.component.ActionColumn
@@ -196,6 +197,11 @@ fun FoundScreen(
     val off = summary.groups.sumOf { it.off }
     // Stock-only: the TV always keeps its own home screen, so an empty plan runs nothing.
     val nothingToDo = off == 0
+    // Leftover apps (2026-11-12): with nothing to switch off, the Customise sheet —
+    // the only place a leftover row can be tapped — is otherwise unreachable, because
+    // its button only renders when off > 0. A leftover list to review is itself a
+    // reason to open it, so the button renders whenever the list has rows.
+    val hasLeftoverRows = summary.groups.any { it.id == DefaultPlanner.GROUP_LEFTOVER_APPS && it.rows.isNotEmpty() }
     val locale = LocalConfiguration.current.locales[0]
     ScreenScaffold(
         Glow.Tv, modifier,
@@ -210,9 +216,11 @@ fun FoundScreen(
                     nothingToDo && extras.unknownModel -> {
                         PrimaryButton(stringResource(R.string.found_help_add_tv), onHelpAddTv, guardObscured = false)
                         SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })
+                        if (hasLeftoverRows) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })
                     }
                     nothingToDo -> {
                         PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)
+                        if (hasLeftoverRows) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })
                     }
                     else -> {
                         PrimaryButton(stringResource(R.string.found_make_clean), { actions.intent(SetupIntent.MakeItClean) }, loading = extras.starting)

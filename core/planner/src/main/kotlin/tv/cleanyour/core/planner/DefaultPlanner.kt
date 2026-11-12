@@ -244,8 +244,11 @@ class DefaultPlanner(
             // REA default on (2026-11-04): when autoDebloat/cleanStockHome is set, REA runs even
             // when the TV has a profile — its groups join the profile's, profile rows first, so the
             // profile wins a package both know (the `covered` set skips the REA row for it).
+            // REA candidates, computed for every Setup: the REA groups show only when
+            // autoDebloat/cleanStockHome is on, but the leftover list below always needs
+            // to know what a rule already matched, toggles or not.
+            val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers, ramByPackage = req.ramByPackage, deepScan = req.deepScan)
             val packageGroups: List<PackageGroup> = rawPackageGroups + if (choices.autoDebloat || choices.cleanStockHome) {
-                val candidates = ReaEngine.findDebloatCandidates(snapshot, facts, stockLaunchers, ramByPackage = req.ramByPackage, deepScan = req.deepScan)
                 ReaEngine.synthesizeReaGroups(candidates)
             } else {
                 emptyList()
@@ -293,6 +296,35 @@ class DefaultPlanner(
                 }
                 groups += GroupSummary(group.id, group.title, rows.count { it.off }, rows.size, rows)
             }
+            // Leftover apps (2026-11-12): every system app on the TV that no rule matched —
+            // not in a profile group, not an REA candidate, not a Shop/ad package, not
+            // protected, not the home screen — so the person can see it and pick it. The
+            // REA and the APK scan only ever see what a rule already flags; a useless
+            // preinstalled app matching nothing (a random browser, a vendor IoT app) never
+            // appeared anywhere before this list, and the list is derived from the TV's own
+            // snapshot, so those apps surface by their own display names — no package name
+            // is hardcoded anywhere in the feature. Default kept: a row is off only when
+            // the person tapped it (extraOff). A user-installed app never appears here
+            // (system only, and protectedReason refuses one before it could be planned),
+            // and a row already off is Managed's, not this list's. No APK size: the frozen
+            // Snapshot carries no code path, so the row shows the package name plus the
+            // measured RAM when the probe measured it, and the name plus the package when
+            // it did not.
+            val matchedPkgs = candidates.map { it.pkg }.toSet() + ReaEngine.STOCK_AD_AND_SHOP_PACKAGES
+            val homePkg = snapshot.home.resolved?.pkg
+            val leftoverPkgs = snapshot.packages.keys
+                .filter { pkg -> pkg !in covered && pkg !in matchedPkgs && pkg != homePkg }
+                .filter { pkg -> val st = state(pkg); st != null && st.system && !isOff(pkg) }
+                .filter { pkg -> protectedReason(pkg, profile, stockLaunchers, packageGroups) == null }
+                .sortedWith(compareByDescending<PackageName> { req.ramByPackage[it] ?: 0 }.thenBy { it.value })
+            val leftoverRows = mutableListOf<RowSummary>()
+            for (pkg in leftoverPkgs) {
+                val off = pkg !in choices.kept && pkg in choices.extraOff
+                leftoverRows += RowSummary(pkg, name(pkg), ramNote(pkg, pkg.value, req.ramByPackage), off, protected = false, whyProtected = null)
+                if (off) { switchOff(pkg, GROUP_LEFTOVER_APPS, choices.uninstallBloat); disabled++ }
+                covered += pkg
+            }
+            if (leftoverRows.isNotEmpty()) groups += GroupSummary(GROUP_LEFTOVER_APPS, TITLE_LEFTOVER_APPS, leftoverRows.count { it.off }, leftoverRows.size, leftoverRows)
             // Custom: packages switched off outside the groups.
             val custom = mutableListOf<RowSummary>()
             for (pkg in choices.extraOff.sortedBy { it.value }) {
@@ -803,6 +835,10 @@ class DefaultPlanner(
         const val GROUP_CUSTOM = "custom"
         const val GROUP_STOCK_CLEAN = "stock_clean"
         const val TITLE_STOCK_CLEAN = "Clean Stock Home"
+        // Leftover apps (2026-11-12): system apps no rule matched. The id is distinct
+        // from GROUP_LEFTOVERS (Manage's "switched off" list) on purpose.
+        const val GROUP_LEFTOVER_APPS = "leftover_apps"
+        const val TITLE_LEFTOVER_APPS = "Other preinstalled apps"
         const val GROUP_HOME = "home"
         // Legacy ids, kept so the engine can still read stored plans from before the stock-only
         // build: their guarded sections (SECTION_HOME, SECTION_HELPER) and curtain steps
